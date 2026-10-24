@@ -69,29 +69,72 @@ public:
     juce::ScopedNoDenormals nd;
     buffer.clear(); midi.clear();
     const int n = buffer.getNumSamples();
-    bool hostPlaying = false, havePpq = false; double ppq = 0;
+    bool hostPlaying = false, havePpq = false; double ppq = 0, bpm = 120.0;
     if (auto* ph = getPlayHead())
       if (auto pos = ph->getPosition()) {
         hostPlaying = pos->getIsPlaying();
         if (auto p = pos->getPpqPosition()) { ppq = *p; havePpq = true; }
+        if (auto b = pos->getBpm()) bpm = *b;
       }
+    if (bpm < 20.0) bpm = 120.0;
     bool run = false;
     if (hostPlaying && havePpq) run = true;
-    else if (preview.load()) { internalPpq += (double) n / sampleRate * 1.5; ppq = internalPpq; run = true; }
+    else if (preview.load()) { ppq = internalPpq; bpm = 90.0; internalPpq += (double) n / sampleRate * 1.5; run = true; }
+
+    // take a fresh copy of the chords only when they changed
+    if (version.load() != snapVersion) {
+      juce::SpinLock::ScopedTryLockType tl(lock);
+      if (tl.isLocked()) { snap = state; snapVersion = version.load(); }
+    }
+
     juce::MidiBuffer ev;
     if (run) {
-      int bar = (int) std::floor(ppq / 4.0);
-      if (bar != lastBar) {
-        for (int note : held) ev.addEvent(juce::MidiMessage::noteOff(1, note), 0);
-        std::vector<int> c;
-        { juce::SpinLock::ScopedLockType l(lock); c = state.voiced[((bar % 4) + 4) % 4]; }
-        for (size_t i = 0; i < c.size(); ++i)
-          ev.addEvent(juce::MidiMessage::noteOn(1, c[i], (juce::uint8)(i == 0 ? 85 : 66 + audioRng.nextInt(18))), 0);
-        held = c; lastBar = bar;
+      const double pps = bpm / 60.0 / sampleRate;          // beats per sample
+      const double p0 = ppq, p1 = p0 + (double) n * pps;
+      auto off = [&](double t) { return juce::jlimit(0, n - 1, (int) std::floor((t - p0) / pps)); };
+      auto release = [&](double upTo) {
+        for (size_t i = 0; i < active.size();) {
+          if (active[i].end <= upTo) {
+            ev.addEvent(juce::MidiMessage::noteOff(1, active[i].note), off(active[i].end));
+            active.erase(active.begin() + (long) i);
+          } else ++i;
+        }
+      };
+      auto cutAll = [&](int at) {
+        for (auto& a : active) ev.addEvent(juce::MidiMessage::noteOff(1, a.note), at);
+        active.clear();
+      };
+      auto play = [&](const Hit& h, double t, int at) {
+        cutAll(at);
+        if (h.chord < 0 || h.chord > 3) return;
+        const auto& c = snap.voiced[h.chord];
+        for (size_t i = 0; i < c.size(); ++i) {
+          ev.addEvent(juce::MidiMessage::noteOn(1, c[i], (juce::uint8)(i == 0 ? 85 : 66 + audioRng.nextInt(18))), at);
+          active.push_back(Act{c[i], t + h.len});
+        }
+      };
+
+      const bool jump = !wasRunning || std::abs(p0 - expectedPpq) > 0.25;
+      const double base = std::floor(p0 / 16.0) * 16.0;
+      if (jump) {
+        // start or jump: pick up the chord that should already be sounding
+        cutAll(0);
+        for (const auto& h : snap.hits) {
+          const double t = base + h.start;
+          if (t < p0 - 1e-9 && t + h.len > p0 + 1e-9) play(h, t, 0);
+        }
       }
-    } else if (lastBar != INT_MIN) {
-      for (int note : held) ev.addEvent(juce::MidiMessage::noteOff(1, note), 0);
-      held.clear(); lastBar = INT_MIN;
+      const double w0 = jump ? p0 : expectedPpq;
+      for (int cyc = 0; cyc < 2; ++cyc)
+        for (const auto& h : snap.hits) {
+          const double t = base + cyc * 16.0 + h.start;
+          if (t >= w0 && t < p1) { release(t); play(h, t, off(t)); }
+        }
+      release(p1);
+      expectedPpq = p1; wasRunning = true;
+    } else if (wasRunning) {
+      for (auto& a : active) ev.addEvent(juce::MidiMessage::noteOff(1, a.note), 0);
+      active.clear(); wasRunning = false;
     }
     synth.renderNextBlock(buffer, ev, 0, n);
     midi.swapWith(ev);
@@ -99,21 +142,25 @@ public:
 
   void generate() {
     juce::SpinLock::ScopedLockType l(lock);
-    state.generate(uiRng, key, mood); state.revoice(open != 0, uiRng);
+    state.generate(uiRng, key, mood); state.revoice(open != 0, uiRng); ++version;
   }
-  void revoice() { juce::SpinLock::ScopedLockType l(lock); state.revoice(open != 0, uiRng); }
-  void setPreview(bool on) { internalPpq = 0; lastBar = INT_MIN; preview = on; }
+  void revoice() { juce::SpinLock::ScopedLockType l(lock); state.revoice(open != 0, uiRng); ++version; }
+  void setPreview(bool on) { if (on) internalPpq = 0; preview = on; }
   juce::String getNames() { juce::SpinLock::ScopedLockType l(lock); return state.names; }
 
   juce::File writeMidiFile() {
     ChordGen copy; { juce::SpinLock::ScopedLockType l(lock); copy = state; }
     juce::MidiMessageSequence seq;
-    for (int i = 0; i < 4; ++i)
-      for (size_t j = 0; j < copy.voiced[i].size(); ++j) {
-        int note = copy.voiced[i][j], vel = j == 0 ? 85 : 66 + uiRng.nextInt(18);
-        seq.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), i * 1920.0);
-        seq.addEvent(juce::MidiMessage::noteOff(1, note), i * 1920.0 + 1900.0);
+    for (const auto& h : copy.hits) {
+      if (h.chord < 0 || h.chord > 3) continue;
+      const double on = h.start * 480.0, offT = (h.start + h.len) * 480.0 - 10.0;
+      const auto& c = copy.voiced[h.chord];
+      for (size_t j = 0; j < c.size(); ++j) {
+        int note = c[j], vel = j == 0 ? 85 : 66 + uiRng.nextInt(18);
+        seq.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), on);
+        seq.addEvent(juce::MidiMessage::noteOff(1, note), offT);
       }
+    }
     seq.addEvent(juce::MidiMessage::endOfTrack(), 7680.0);
     seq.updateMatchedPairs();
     juce::MidiFile mf; mf.setTicksPerQuarterNote(480); mf.addTrack(seq);
@@ -129,13 +176,17 @@ public:
   std::atomic<bool> preview{false};
 
 private:
+  struct Act { int note; double end; };
   juce::Synthesiser synth;
   juce::SpinLock lock;
-  ChordGen state;
+  ChordGen state, snap;
+  std::atomic<int> version{0};
+  int snapVersion = -1;
   juce::Random uiRng, audioRng;
-  std::vector<int> held;
-  double sampleRate = 44100.0, internalPpq = 0.0;
-  int lastBar = INT_MIN, fileCounter = 0;
+  std::vector<Act> active;
+  double sampleRate = 44100.0, internalPpq = 0.0, expectedPpq = 0.0;
+  bool wasRunning = false;
+  int fileCounter = 0;
 };
 
 struct DragBox : juce::Component {
@@ -172,8 +223,14 @@ public:
     moodBox.onChange = [this] { proc.mood = moodBox.getSelectedItemIndex(); proc.generate(); };
     voiBox.onChange = [this] { proc.open = voiBox.getSelectedItemIndex(); proc.revoice(); };
     genBtn.setButtonText("Generate"); genBtn.onClick = [this] { proc.generate(); };
-    preBtn.setButtonText("Preview"); preBtn.setClickingTogglesState(true);
-    preBtn.onClick = [this] { proc.setPreview(preBtn.getToggleState()); };
+    preBtn.setClickingTogglesState(true);
+    preBtn.setToggleState(proc.preview.load(), juce::dontSendNotification);
+    preBtn.setButtonText(proc.preview.load() ? "Stop" : "Preview");
+    preBtn.onClick = [this] {
+      bool on = preBtn.getToggleState();
+      proc.setPreview(on);
+      preBtn.setButtonText(on ? "Stop" : "Preview");
+    };
     label.setJustificationType(juce::Justification::centred); label.setFont(juce::Font(15.0f));
     label.setColour(juce::Label::textColourId, juce::Colours::white);
     for (juce::Component* c : std::initializer_list<juce::Component*>{&keyBox, &moodBox, &voiBox, &genBtn, &preBtn, &label, &drag})

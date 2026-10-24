@@ -54,10 +54,43 @@ inline const std::vector<Prog> MOODS[5] = {
     mkP(mk(0,M9), mk(5,D9), mk(3,MAJ9), mk(10,MAJ9)) }
 };
 
+// One chord hit in the 4-bar loop (16 beats): start/length in beats, chord = 0..3
+struct Hit { double start, len; int chord; };
+// Rhythm patterns inside one bar (start, length in beats)
+struct Pat { int n; double s[3], l[3]; };
+inline const Pat PATS[6] = {
+  {1, {0,0,0},     {4,0,0}},        // hold the whole bar
+  {2, {0,2.5,0},   {2.5,1.5,0}},    // long + short
+  {3, {0,2,3},     {2,1,1}},        // 2 + 1 + 1
+  {3, {0,1.5,3},   {1.5,1.5,1}},    // dotted
+  {2, {0,1.5,0},   {1,2.5,0}},      // hit, rest, late hit
+  {1, {0.5,0,0},   {3.5,0,0}}       // enter off the beat
+};
+
 struct ChordGen {
   int root[4] = {0,0,0,0}, type[4] = {MAJ9,MAJ9,MAJ9,MAJ9}, bass[4] = {0,0,0,0};
   std::vector<int> voiced[4];
+  std::vector<Hit> hits;
   juce::String names;
+
+  void makeRhythm(juce::Random& rng) {
+    hits.clear(); int prevPat = -1;
+    for (int bar = 0; bar < 4; ++bar) {
+      const int m = (bar == 0 ? 5 : 6);
+      int pi = rng.nextInt(m);
+      if (pi == prevPat) pi = (pi + 1 + rng.nextInt(4)) % m;
+      prevPat = pi;
+      const Pat& p = PATS[pi];
+      for (int k = 0; k < p.n; ++k) hits.push_back(Hit{ bar * 4.0 + p.s[k], p.l[k], bar });
+      // anticipation: chord arrives half a beat early
+      if (bar > 0 && p.s[0] == 0.0 && rng.nextFloat() < 0.35f) {
+        Hit& f = hits[hits.size() - (size_t) p.n];
+        f.start -= 0.5; f.len += 0.5;
+      }
+    }
+    for (size_t i = 0; i + 1 < hits.size(); ++i)
+      hits[i].len = std::min(hits[i].len, hits[i + 1].start - hits[i].start);
+  }
 
   void generate(juce::Random& rng, int key, int mood) {
     mood = juce::jlimit(0, 4, mood);
@@ -76,6 +109,7 @@ struct ChordGen {
       bass[i] = ((c.b < 0 ? c.r : c.b) + key) % 12;
       type[i] = t;
     }
+    makeRhythm(rng);
   }
 
   static std::vector<int> pick(int rt, int t, const std::vector<int>& prev, juce::Random& rng) {
