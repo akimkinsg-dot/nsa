@@ -13,7 +13,6 @@ inline const std::vector<int> IV[] = {
 inline const char* SUF[] = {"maj7","maj9","m7","m9","m11","9","13","maj7#11","7b9","9sus4","m(maj7)","6/9","add9","m7b5"};
 inline const char* NOTE_NAMES[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
 
-// how "tense" a chord type sounds (0..1), used for the story arc check
 inline double tensOf(int t) {
   switch (t) {
     case MAJ7: case MAJ9: case ADD9: case SIX9: return 0.0;
@@ -28,40 +27,32 @@ inline double tensOf(int t) {
   }
 }
 
-// One chord: root offset from the key, chord type, bass offset (-1 = bass is the root)
 struct Ch { int r, t, b; };
-// One progression + its place on the pad: dk = 0 light .. 1 dark, tn = 0 calm .. 1 tense
 struct Prog { Ch c[4]; float dk, tn; };
 inline Ch mk(int r, int t, int b = -1) { return Ch{r, t, b}; }
 inline Prog mkP(Ch a, Ch b, Ch c, Ch d, float dk, float tn) { return Prog{{a, b, c, d}, dk, tn}; }
 
-// Starter bank (25 progressions). Order: home -> departure -> color/tension -> soft return
 inline const std::vector<Prog> BANK = {
-  // light / warm
   mkP(mk(0,MAJ9), mk(9,M9), mk(5,MAJ7S11), mk(5,M9),            0.30f, 0.25f),
   mkP(mk(0,MAJ9), mk(9,M9), mk(2,M9), mk(7,D13),                0.15f, 0.45f),
   mkP(mk(5,MAJ9), mk(4,M7), mk(9,M9), mk(2,M11),                0.20f, 0.15f),
   mkP(mk(0,SIX9), mk(8,MAJ7S11), mk(5,MAJ9), mk(7,SUS9),        0.20f, 0.30f),
   mkP(mk(0,ADD9), mk(7,ADD9,11), mk(9,M9), mk(5,MAJ9),          0.10f, 0.10f),
-  // dark
   mkP(mk(0,M9), mk(8,MAJ9), mk(5,M9), mk(7,D7B9),               0.80f, 0.65f),
   mkP(mk(0,M11), mk(5,M9), mk(10,D9), mk(8,MAJ7S11),            0.75f, 0.50f),
   mkP(mk(0,MMAJ7), mk(0,M7,10), mk(8,MAJ9), mk(7,D7B9),         0.90f, 0.80f),
   mkP(mk(0,M9), mk(10,D9), mk(3,MAJ9), mk(5,M11),               0.70f, 0.35f),
   mkP(mk(0,M11), mk(8,MAJ7S11), mk(1,MAJ9), mk(7,D7B9),         0.90f, 0.75f),
-  // dreamy
   mkP(mk(0,MAJ9), mk(8,MAJ7S11), mk(5,MAJ9), mk(10,D9),         0.25f, 0.20f),
   mkP(mk(5,MAJ7S11), mk(4,M9), mk(9,M11), mk(7,SUS9),           0.30f, 0.30f),
   mkP(mk(0,SIX9), mk(2,D9), mk(4,M9), mk(5,MAJ7S11),            0.20f, 0.25f),
   mkP(mk(9,M9), mk(5,MAJ9), mk(0,MAJ9), mk(7,SUS9),             0.40f, 0.15f),
   mkP(mk(0,MAJ7), mk(3,MAJ9), mk(5,MAJ7S11), mk(7,SUS9),        0.30f, 0.30f),
-  // sad
   mkP(mk(0,M9), mk(8,MAJ9), mk(3,MAJ9), mk(10,D9),              0.65f, 0.15f),
   mkP(mk(0,M11), mk(5,M9), mk(8,MAJ7S11), mk(7,D7B9),           0.70f, 0.45f),
   mkP(mk(5,M9), mk(0,M11), mk(8,MAJ9), mk(7,D7B9),              0.75f, 0.50f),
   mkP(mk(0,M9), mk(10,D13), mk(8,MAJ9), mk(7,D7B9),             0.70f, 0.60f),
   mkP(mk(0,MMAJ7), mk(5,M9), mk(2,M7B5), mk(7,D7B9),            0.85f, 0.85f),
-  // sensual
   mkP(mk(5,MAJ9), mk(7,D13), mk(4,M9), mk(9,M11),               0.30f, 0.40f),
   mkP(mk(0,MAJ9), mk(3,D9), mk(5,MAJ7S11), mk(7,SUS9),          0.25f, 0.45f),
   mkP(mk(2,M9), mk(7,D13), mk(4,M9), mk(9,D7B9),                0.50f, 0.70f),
@@ -69,17 +60,15 @@ inline const std::vector<Prog> BANK = {
   mkP(mk(0,M9), mk(5,D9), mk(3,MAJ9), mk(10,MAJ9),              0.50f, 0.30f)
 };
 
-// One chord hit in the 4-bar loop (16 beats): start/length in beats, chord = 0..3
 struct Hit { double start, len; int chord; };
-// Rhythm patterns inside one bar (start, length in beats)
 struct Pat { int n; double s[3], l[3]; };
 inline const Pat PATS[6] = {
-  {1, {0,0,0},     {4,0,0}},        // hold the whole bar
-  {2, {0,2.5,0},   {2.5,1.5,0}},    // long + short
-  {3, {0,2,3},     {2,1,1}},        // 2 + 1 + 1
-  {3, {0,1.5,3},   {1.5,1.5,1}},    // dotted
-  {2, {0,1.5,0},   {1,2.5,0}},      // hit, rest, late hit
-  {1, {0.5,0,0},   {3.5,0,0}}       // enter off the beat
+  {1, {0,0,0},     {4,0,0}},
+  {2, {0,2.5,0},   {2.5,1.5,0}},
+  {3, {0,2,3},     {2,1,1}},
+  {3, {0,1.5,3},   {1.5,1.5,1}},
+  {2, {0,1.5,0},   {1,2.5,0}},
+  {1, {0.5,0,0},   {3.5,0,0}}
 };
 
 struct ChordGen {
@@ -88,11 +77,10 @@ struct ChordGen {
   std::vector<Hit> hits;
   Prog base{};
   int baseIdx = -1;
-  int topLine[4] = {72,72,72,72};   // planned top note (the "melody") for each chord
+  int topLine[4] = {72,72,72,72};
   float topCenter = 72.0f, tenseV = 0.4f;
   juce::String names;
 
-  // choose a progression index near the pad point (closer = more likely)
   static int pickIdx(juce::Random& rng, float dk, float tn, float sigma = 0.28f) {
     const size_t n = BANK.size();
     std::vector<double> w(n); double sum = 0;
@@ -115,7 +103,6 @@ struct ChordGen {
       prevPat = pi;
       const Pat& p = PATS[pi];
       for (int k = 0; k < p.n; ++k) hits.push_back(Hit{ bar * 4.0 + p.s[k], p.l[k], bar });
-      // anticipation: chord arrives half a beat early
       if (bar > 0 && p.s[0] == 0.0 && rng.nextFloat() < 0.35f) {
         Hit& f = hits[hits.size() - (size_t) p.n];
         f.start -= 0.5; f.len += 0.5;
@@ -125,7 +112,6 @@ struct ChordGen {
       hits[i].len = std::min(hits[i].len, hits[i + 1].start - hits[i].start);
   }
 
-  // base progression -> chords in the key. Exactly ONE "surprise" chord (maj7#11 or m(maj7))
   void apply(juce::Random& rng, int key, float tense) {
     tenseV = tense;
     int t[4];
@@ -158,7 +144,6 @@ struct ChordGen {
     }
   }
 
-  // plan the top line first: smooth, with one clear peak (best on the 3rd chord)
   void planTop(juce::Random& rng) {
     std::vector<int> cands[4];
     for (int i = 0; i < 4; ++i) {
@@ -166,7 +151,7 @@ struct ChordGen {
       std::vector<int> pcs;
       for (size_t k = 1; k < iv.size(); ++k) {
         if (iv[k] % 12 == 7 && iv.size() >= 5) continue;
-        if (iv[k] % 12 == 1) continue;                     // no b9 on top
+        if (iv[k] % 12 == 1) continue;
         pcs.push_back((root[i] + iv[k]) % 12);
       }
       for (int m = (int) topCenter - 5; m <= (int) topCenter + 4; ++m)
@@ -195,7 +180,6 @@ struct ChordGen {
     for (int i = 0; i < 4; ++i) topLine[i] = bv[i];
   }
 
-  // "taste check": lower = better (bass/top leaps, muddy clusters, similar chords, tension arc)
   double quality() const {
     static const double ideal[4] = {0.25, 0.5, 1.0, 0.5};
     double q = 0;
@@ -218,8 +202,6 @@ struct ChordGen {
     return q;
   }
 
-  // new progression near the pad point; 24 tries, the best one by quality() wins.
-  // differ = true: avoid repeating the previous progression
   void generate(juce::Random& rng, int key, float dark, float tense, bool open, bool differ = false) {
     const int avoid = differ ? baseIdx : -1;
     ChordGen best; double bq = 1e18;
@@ -235,7 +217,6 @@ struct ChordGen {
     *this = best;
   }
 
-  // "continue": same character, 1-2 chords replaced by neighbours from the bank
   void evolve(juce::Random& rng, int key, float tense, bool open) {
     ChordGen best; double bq = 1e18; bool found = false;
     for (int a = 0; a < 12; ++a) {
@@ -271,7 +252,6 @@ struct ChordGen {
     const auto& iv = IV[t]; std::vector<int> pcs;
     for (size_t i = 1; i < iv.size(); ++i) { if (iv[i] % 12 == 7 && iv.size() >= 5) continue; pcs.push_back((rt + iv[i]) % 12); }
     std::vector<std::vector<int>> cand;
-    // voices live above ~B3 so the 100-250 Hz zone stays free for the bass only
     for (int pc : pcs) { std::vector<int> a; for (int m = 59; m <= 78; ++m) if (m % 12 == pc) a.push_back(m); cand.push_back(a); }
     std::vector<int> best, cur; double bestCost = 1e9;
     std::function<void(size_t)> rec = [&](size_t k) {
@@ -281,7 +261,6 @@ struct ChordGen {
         double cost = rng.nextFloat() * 0.8;
         if (s.back() - s.front() > 15) cost += 100;
         if (top >= 0 && s.back() != top) cost += 500;
-        // no muddy clusters in the low register
         for (size_t i = 0; i + 1 < s.size(); ++i) {
           const int gap = s[i + 1] - s[i];
           if (gap < 3 && s[i] < 66) cost += 30; else if (gap == 1) cost += 3;
@@ -305,7 +284,6 @@ struct ChordGen {
     std::vector<int> prev; juce::StringArray nm; int prevBass = -1;
     for (int i = 0; i < 4; ++i) {
       auto up = pick(root[i], type[i], prev, rng, topLine[i]); prev = up;
-      // bass: low (G1..G2), nearest octave to the previous bass note
       int bassNote = 31 + (((bass[i] - 31) % 12) + 12) % 12;
       if (prevBass >= 0) {
         int bestD = 99;
@@ -313,7 +291,6 @@ struct ChordGen {
           if (m % 12 == bass[i] && std::abs(m - prevBass) < bestD) { bestD = std::abs(m - prevBass); bassNote = m; }
       }
       prevBass = bassNote;
-      // open voicing: drop the 2nd-from-top note an octave, only if it stays above ~G3
       if (open && up.size() >= 4) {
         const int dn = up[up.size() - 2] - 12;
         if (dn >= 55) up[up.size() - 2] = dn;
