@@ -63,7 +63,7 @@ public:
   void setStateInformation(const void* data, int size) override {
     if (size < 20) return;
     juce::MemoryInputStream in(data, (size_t) size, false);
-    key = juce::jlimit(0, 11, in.readInt()); open = juce::jlimit(0, 1, in.readInt());
+    key = juce::jlimit(0, 12, in.readInt()); open = juce::jlimit(0, 1, in.readInt());
     dark = juce::jlimit(0.0f, 1.0f, in.readFloat()); tense = juce::jlimit(0.0f, 1.0f, in.readFloat());
     octaveShift = juce::jlimit(-1, 1, in.readInt()); noBass = in.readBool(); strum = in.readBool();
     lastKey = key;
@@ -175,10 +175,14 @@ public:
     state.evolve(uiRng, key, tense, open != 0, getCurrentBpm()); ++version;
   }
   void setKey(int nk) {
-    const int d = (((nk - lastKey) % 12) + 12) % 12;
+    const int d = (nk == 12 || key == 12) ? 0 : (((nk - lastKey) % 12) + 12) % 12;
     lastKey = nk; key = nk;
     juce::SpinLock::ScopedLockType l(lock);
-    state.transpose(d, open != 0, uiRng); ++version;
+    if (nk == 12) {
+      generate(true); // Free mode generates a fresh wandering key journey
+    } else {
+      state.transpose(d, open != 0, uiRng); ++version;
+    }
   }
   void revoice() { juce::SpinLock::ScopedLockType l(lock); state.revoice(open != 0, uiRng); ++version; }
   void setPreview(bool on) { if (on) internalPpq = 0; preview = on; }
@@ -288,7 +292,7 @@ class NSAEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
   explicit NSAEditor(NSAProcessor& p) : AudioProcessorEditor(&p), proc(p), pad(p), drag(p) {
     setSize(400, 440);
-    keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}, 1);
+    keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B","Free (Wand)"}, 1);
     voiBox.addItemList(juce::StringArray{"Close Voicing","Open Voicing"}, 1);
     octBox.addItemList(juce::StringArray{"Oct: -1","Oct: 0","Oct: +1"}, 1);
     

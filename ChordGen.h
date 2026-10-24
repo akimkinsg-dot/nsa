@@ -32,9 +32,7 @@ struct Prog { Ch c[4]; float dk, tn; };
 inline Ch mk(int r, int t, int b = -1) { return Ch{r, t, b}; }
 inline Prog mkP(Ch a, Ch b, Ch c, Ch d, float dk, float tn) { return Prog{{a, b, c, d}, dk, tn}; }
 
-// РАСШИРЕННЫЙ СИГНАТУРНЫЙ БАНК R&B / SOUL / TRAPSOUL (40 ПОЛНОЦЕННЫХ ПРОГРЕССИЙ)
 inline const std::vector<Prog> BANK = {
-  // --- Modern TrapSoul & Atmospheric Alt-R&B (Bryson Tiller, Kaleem Taylor, CVIRO) ---
   mkP(mk(0,MAJ9), mk(9,M9), mk(5,MAJ7S11), mk(5,M9),            0.30f, 0.25f),
   mkP(mk(0,MAJ9), mk(9,M9), mk(2,M9), mk(7,D13),                0.15f, 0.45f),
   mkP(mk(5,MAJ9), mk(4,M7), mk(9,M9), mk(2,M11),                0.20f, 0.15f),
@@ -60,51 +58,42 @@ inline const std::vector<Prog> BANK = {
   mkP(mk(2,M9), mk(7,D13), mk(4,M9), mk(9,D7B9),                0.50f, 0.70f),
   mkP(mk(0,MAJ7), mk(2,D9), mk(4,M7), mk(9,M9),                 0.30f, 0.35f),
   mkP(mk(0,M9), mk(5,D9), mk(3,MAJ9), mk(10,MAJ9),              0.50f, 0.30f),
-
-  // --- Classic 90s & 2000s R&B (SWV, Brian McKnight, Jagged Edge, Kelly Price) ---
-  mkP(mk(2,M9), mk(7,SUS9), mk(0,MAJ9), mk(9,M9),               0.20f, 0.20f), // Классический ii-V-I-vi
-  mkP(mk(9,M11), mk(2,M9), mk(7,D13), mk(0,MAJ9),               0.35f, 0.30f), // Плавный соул хорн
-  mkP(mk(5,MAJ9), mk(2,M9), mk(7,D7B9), mk(0,M9),               0.60f, 0.55f), // Драматичный 90s минор
-  mkP(mk(0,ADD9), mk(4,M9), mk(5,MAJ9), mk(7,SUS9),             0.15f, 0.15f), // Светлая романтика 2000-х
-  mkP(mk(0,M9), mk(3,MAJ9), mk(8,MAJ7S11), mk(7,D7B9),          0.85f, 0.70f), // Deep R&B Ballad
-  mkP(mk(2,M7B5), mk(7,D7B9), mk(0,M11), mk(9,M9),              0.75f, 0.80f), // Джазовый малый минорный круг
-  mkP(mk(5,MAJ7S11), mk(4,M7), mk(2,M9), mk(0,MAJ9),            0.25f, 0.25f), // Brian McKnight Style Voicing
-  mkP(mk(9,M9), mk(7,SUS9), mk(0,MAJ9), mk(5,MAJ9),             0.30f, 0.15f), // SWV / Amerie Warm Groove
-
-  // --- Deep Atmospheric & Dark Night R&B (Nobu Woods, The Code) ---
-  mkP(mk(0,M11), mk(8,MAJ9), mk(5,M9), mk(7,SUS9),              0.80f, 0.40f), // Ночная трап-соул подложка
-  mkP(mk(0,MMAJ7), mk(8,MAJ7S11), mk(5,M11), mk(7,D7B9),        0.95f, 0.85f), // Кинематографичный сумрак
-  mkP(mk(0,M9), mk(2,M7B5), mk(7,D7B9), mk(0,M11),              0.85f, 0.75f), // Тягучий туманный R&B
-  mkP(mk(5,MAJ9), mk(8,MAJ9), mk(0,M11), mk(7,D13),             0.65f, 0.50f), // Океанический панорамный пад
-  mkP(mk(0,SIX9), mk(5,MAJ7S11), mk(9,M9), mk(7,D7B9),          0.40f, 0.45f), // Lush Neo-Soul Vibe
-  mkP(mk(0,M9), mk(7,D13), mk(5,MAJ9), mk(10,D9),               0.55f, 0.40f), // Smooth Night Cruising
-  mkP(mk(9,M11), mk(5,MAJ7S11), mk(2,M9), mk(7,D7B9),           0.70f, 0.65f)  // Финальный R&B поворот
+  mkP(mk(2,M9), mk(7,SUS9), mk(0,MAJ9), mk(9,M9),               0.20f, 0.20f),
+  mkP(mk(9,M11), mk(2,M9), mk(7,D13), mk(0,MAJ9),               0.35f, 0.30f),
+  mkP(mk(5,MAJ9), mk(2,M9), mk(7,D7B9), mk(0,M9),               0.60f, 0.55f),
+  mkP(mk(0,ADD9), mk(4,M9), mk(5,MAJ9), mk(7,SUS9),             0.15f, 0.15f),
+  mkP(mk(0,M9), mk(3,MAJ9), mk(8,MAJ7S11), mk(7,D7B9),          0.85f, 0.70f),
+  mkP(mk(2,M7B5), mk(7,D7B9), mk(0,M11), mk(9,M9),              0.75f, 0.80f),
+  mkP(mk(5,MAJ7S11), mk(4,M7), mk(2,M9), mk(0,MAJ9),            0.25f, 0.25f),
+  mkP(mk(9,M9), mk(7,SUS9), mk(0,MAJ9), mk(5,MAJ9),             0.30f, 0.15f),
+  mkP(mk(0,M11), mk(8,MAJ9), mk(5,M9), mk(7,SUS9),              0.80f, 0.40f),
+  mkP(mk(0,MMAJ7), mk(8,MAJ7S11), mk(5,M11), mk(7,D7B9),        0.95f, 0.85f),
+  mkP(mk(0,M9), mk(2,M7B5), mk(7,D7B9), mk(0,M11),              0.85f, 0.75f),
+  mkP(mk(5,MAJ9), mk(8,MAJ9), mk(0,M11), mk(7,D13),             0.65f, 0.50f),
+  mkP(mk(0,SIX9), mk(5,MAJ7S11), mk(9,M9), mk(7,D7B9),          0.40f, 0.45f),
+  mkP(mk(0,M9), mk(7,D13), mk(5,MAJ9), mk(10,D9),               0.55f, 0.40f),
+  mkP(mk(9,M11), mk(5,MAJ7S11), mk(2,M9), mk(7,D7B9),           0.70f, 0.65f)
 };
 
 struct Hit { double start, len; int chord; };
-
 struct PadPattern { int n; double s[4], l[4]; int cMap[4]; };
 
-// ВАРИАНТЫ РИТМА В ЗАВИСИМОСТИ ОТ BPM
-// Slow BPM (50 - 85): Очень длинные гипнотические аккорды (от 2 до 4 тактов)
 inline const PadPattern PATTERNS_SLOW[3] = {
-  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 2, 0, 0}},          // 2 аккорда по 2 такта
-  {3, {0.0, 8.0, 12.0, 0}, {8.0, 4.0, 4.0, 0}, {0, 1, 2, 0}},     // 1 длинный аккорд на 2 такта + 2 по 1 такту
-  {2, {0.0, 12.0, 0, 0}, {12.0, 4.0, 0, 0}, {0, 3, 0, 0}}        // 1 сверхдлинный на 3 такта + 1 разрешение
+  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 2, 0, 0}},
+  {3, {0.0, 8.0, 12.0, 0}, {8.0, 4.0, 4.0, 0}, {0, 1, 2, 0}},
+  {2, {0.0, 12.0, 0, 0}, {12.0, 4.0, 0, 0}, {0, 3, 0, 0}}
 };
 
-// Medium BPM (86 - 115): Стандартный баланс TrapSoul / R&B (1 - 2 такта)
 inline const PadPattern PATTERNS_MID[3] = {
-  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 2, 0, 0}},          // 2 аккорда по 2 такта
-  {3, {0.0, 4.0, 8.0, 0}, {4.0, 4.0, 8.0, 0}, {0, 1, 2, 0}},     // 2 аккорда по 1 такту + 1 на 2 такта
-  {4, {0.0, 4.0, 8.0, 12.0}, {4.0, 4.0, 4.0, 4.0}, {0, 1, 2, 3}}  // 4 аккорда ровно по 1 такту
+  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 2, 0, 0}},
+  {3, {0.0, 4.0, 8.0, 0}, {4.0, 4.0, 8.0, 0}, {0, 1, 2, 0}},
+  {4, {0.0, 4.0, 8.0, 12.0}, {4.0, 4.0, 4.0, 4.0}, {0, 1, 2, 3}}
 };
 
-// Fast / Double-time BPM (116+): Смена раз в 2 такта, чтобы пад не дробил суетливо
 inline const PadPattern PATTERNS_FAST[3] = {
-  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 2, 0, 0}},          // 2 широких аккорда по 2 такта
-  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 1, 0, 0}},          // Разрешение 1 -> 2 аккорд
-  {3, {0.0, 8.0, 12.0, 0}, {8.0, 4.0, 4.0, 0}, {0, 2, 3, 0}}      // Длинное вступление + 2 подложки
+  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 2, 0, 0}},
+  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 1, 0, 0}},
+  {3, {0.0, 8.0, 12.0, 0}, {8.0, 4.0, 4.0, 0}, {0, 2, 3, 0}}
 };
 
 struct ChordGen {
@@ -130,20 +119,14 @@ struct ChordGen {
     return (int) n - 1;
   }
 
-  // УМНАЯ ГЕНЕРАЦИЯ РИТМА НА ОСНОВЕ BPM В ДАВ
   void makeRhythm(juce::Random& rng, double bpm = 120.0) {
     hits.clear();
     const PadPattern* selectedPool = PATTERNS_MID;
-    
-    if (bpm < 85.0) {
-      selectedPool = PATTERNS_SLOW;
-    } else if (bpm > 115.0) {
-      selectedPool = PATTERNS_FAST;
-    }
+    if (bpm < 85.0) selectedPool = PATTERNS_SLOW;
+    else if (bpm > 115.0) selectedPool = PATTERNS_FAST;
 
     int pi = rng.nextInt(3);
     const PadPattern& p = selectedPool[pi];
-    
     for (int k = 0; k < p.n; ++k) {
       int chordIndex = p.cMap[k] % 4;
       hits.push_back(Hit{ p.s[k], p.l[k], chordIndex });
@@ -175,10 +158,27 @@ struct ChordGen {
       else if (x == M9 || x == M7) t[k] = M11;
       else if (x == D9) t[k] = D13;
     }
-    for (int i = 0; i < 4; ++i) {
-      root[i] = (base.c[i].r + key) % 12;
-      bass[i] = ((base.c[i].b < 0 ? base.c[i].r : base.c[i].b) + key) % 12;
-      type[i] = t[i];
+
+    if (key == 12) {
+      // Свободный режим (Free / Wandering): гармоничная смена центров (Neo-Soul / Jazz modulation path)
+      int startR = rng.nextInt(12);
+      int wanderingRoots[4] = {
+        startR,
+        (startR + 5) % 12, // Subdominant shift
+        (startR + 8) % 12, // Chromatic mediant / Neo-soul shift
+        (startR + 7) % 12  // Resolution / Dominant
+      };
+      for (int i = 0; i < 4; ++i) {
+        root[i] = wanderingRoots[i];
+        bass[i] = wanderingRoots[i];
+        type[i] = t[i];
+      }
+    } else {
+      for (int i = 0; i < 4; ++i) {
+        root[i] = (base.c[i].r + key) % 12;
+        bass[i] = ((base.c[i].b < 0 ? base.c[i].r : base.c[i].b) + key) % 12;
+        type[i] = t[i];
+      }
     }
   }
 
