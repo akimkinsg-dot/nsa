@@ -13,6 +13,21 @@ inline const std::vector<int> IV[] = {
 inline const char* SUF[] = {"maj7","maj9","m7","m9","m11","9","13","maj7#11","7b9","9sus4","m(maj7)","6/9","add9","m7b5"};
 inline const char* NOTE_NAMES[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
 
+// how "tense" a chord type sounds (0..1), used for the story arc check
+inline double tensOf(int t) {
+  switch (t) {
+    case MAJ7: case MAJ9: case ADD9: case SIX9: return 0.0;
+    case M7: case M9: return 0.2;
+    case M11: return 0.3;
+    case MAJ7S11: case SUS9: return 0.5;
+    case D9: return 0.6;
+    case D13: return 0.7;
+    case MMAJ7: case M7B5: return 0.8;
+    case D7B9: return 1.0;
+    default: return 0.3;
+  }
+}
+
 // One chord: root offset from the key, chord type, bass offset (-1 = bass is the root)
 struct Ch { int r, t, b; };
 // One progression + its place on the pad: dk = 0 light .. 1 dark, tn = 0 calm .. 1 tense
@@ -72,10 +87,13 @@ struct ChordGen {
   std::vector<int> voiced[4];
   std::vector<Hit> hits;
   Prog base{};
+  int baseIdx = -1;
+  int topLine[4] = {72,72,72,72};   // planned top note (the "melody") for each chord
+  float topCenter = 72.0f, tenseV = 0.4f;
   juce::String names;
 
-  // choose a progression near the pad point (closer = more likely)
-  static const Prog& pickProg(juce::Random& rng, float dk, float tn, float sigma = 0.28f) {
+  // choose a progression index near the pad point (closer = more likely)
+  static int pickIdx(juce::Random& rng, float dk, float tn, float sigma = 0.28f) {
     const size_t n = BANK.size();
     std::vector<double> w(n); double sum = 0;
     for (size_t i = 0; i < n; ++i) {
@@ -84,8 +102,8 @@ struct ChordGen {
       sum += w[i];
     }
     double r = rng.nextDouble() * sum;
-    for (size_t i = 0; i < n; ++i) { r -= w[i]; if (r <= 0.0) return BANK[i]; }
-    return BANK[n - 1];
+    for (size_t i = 0; i < n; ++i) { r -= w[i]; if (r <= 0.0) return (int) i; }
+    return (int) n - 1;
   }
 
   void makeRhythm(juce::Random& rng) {
@@ -107,29 +125,79 @@ struct ChordGen {
       hits[i].len = std::min(hits[i].len, hits[i + 1].start - hits[i].start);
   }
 
-  // base progression -> chords in the key, with small color changes depending on tension
+  // base progression -> chords in the key. Exactly ONE "surprise" chord (maj7#11 or m(maj7))
   void apply(juce::Random& rng, int key, float tense) {
-    const bool minorish = base.dk > 0.55f;
+    tenseV = tense;
+    int t[4];
     for (int i = 0; i < 4; ++i) {
-      const Ch c = base.c[i];
-      int t = c.t; const float r = rng.nextFloat();
-      if (i == 0 && c.r == 0 && minorish && (t == M9 || t == M11) && r < 0.2f) t = MMAJ7;
-      else if (i == 0 && !minorish && t == MAJ9 && r < 0.25f) t = SIX9;
-      else if (i > 0 && t == MAJ9 && r < 0.1f + 0.4f * tense) t = MAJ7S11;
-      else if (t == M9 && r < 0.1f + 0.4f * tense) t = M11;
-      else if (t == D9 && r < 0.5f * tense) t = D13;
-      else if (t == D7B9 && r < 0.5f * (1.0f - tense)) t = D9;
-      else if (t == MAJ7S11 && r < 0.4f * (1.0f - tense)) t = MAJ9;
-      else if (t == M11 && r < 0.3f * (1.0f - tense)) t = M9;
-      else if ((t == M7 || t == MAJ7) && r < 0.4f) t = (t == M7 ? M9 : MAJ9);
-      root[i] = (c.r + key) % 12;
-      bass[i] = ((c.b < 0 ? c.r : c.b) + key) % 12;
-      type[i] = t;
+      t[i] = base.c[i].t; const float r = rng.nextFloat();
+      if (t[i] == D7B9 && r < 0.5f * (1.0f - tense)) t[i] = D9;
+      else if (t[i] == MAJ7S11 && r < 0.4f * (1.0f - tense)) t[i] = MAJ9;
+      else if (t[i] == M11 && r < 0.3f * (1.0f - tense)) t[i] = M9;
+      else if ((t[i] == M7 || t[i] == MAJ7) && r < 0.4f) t[i] = (t[i] == M7 ? M9 : MAJ9);
+    }
+    auto isSurp = [](int x) { return x == MAJ7S11 || x == MMAJ7; };
+    int cnt = 0, keep = -1;
+    for (int i = 0; i < 4; ++i)
+      if (isSurp(t[i])) { ++cnt; if (keep < 0 || std::abs(i - 2) <= std::abs(keep - 2)) keep = i; }
+    if (cnt > 1) {
+      for (int i = 0; i < 4; ++i)
+        if (i != keep && isSurp(t[i])) t[i] = (t[i] == MMAJ7 ? M9 : MAJ9);
+    } else if (cnt == 0 && rng.nextFloat() < 0.6f + 0.4f * tense) {
+      const int k = rng.nextFloat() < 0.7f ? 2 : 1;
+      const int x = t[k];
+      if (x == MAJ9 || x == MAJ7 || x == ADD9 || x == SIX9) t[k] = MAJ7S11;
+      else if ((x == M9 || x == M7 || x == M11) && base.c[k].r == 0) t[k] = MMAJ7;
+      else if (x == M9 || x == M7) t[k] = M11;
+      else if (x == D9) t[k] = D13;
+    }
+    for (int i = 0; i < 4; ++i) {
+      root[i] = (base.c[i].r + key) % 12;
+      bass[i] = ((base.c[i].b < 0 ? base.c[i].r : base.c[i].b) + key) % 12;
+      type[i] = t[i];
     }
   }
 
-  // "taste check": lower = better (bass leaps, top-voice leaps, muddy clusters, similar chords)
+  // plan the top line first: smooth, with one clear peak (best on the 3rd chord)
+  void planTop(juce::Random& rng) {
+    std::vector<int> cands[4];
+    for (int i = 0; i < 4; ++i) {
+      const auto& iv = IV[type[i]];
+      std::vector<int> pcs;
+      for (size_t k = 1; k < iv.size(); ++k) {
+        if (iv[k] % 12 == 7 && iv.size() >= 5) continue;
+        if (iv[k] % 12 == 1) continue;                     // no b9 on top
+        pcs.push_back((root[i] + iv[k]) % 12);
+      }
+      for (int m = (int) topCenter - 5; m <= (int) topCenter + 4; ++m)
+        for (int pc : pcs) if (m % 12 == pc) cands[i].push_back(m);
+      if (cands[i].empty())
+        for (int m = 62; m <= 78; ++m) for (int pc : pcs) if (m % 12 == pc) cands[i].push_back(m);
+      if (cands[i].empty()) cands[i].push_back(72);
+    }
+    double bestS = 1e18; int bv[4] = {72, 72, 72, 72};
+    for (int a : cands[0]) for (int b : cands[1]) for (int c : cands[2]) for (int d : cands[3]) {
+      const int v[4] = {a, b, c, d};
+      double s = rng.nextFloat();
+      int mx = v[0], cntMax = 0, argmax = 0, second = -999; double mean = 0;
+      for (int i = 0; i < 4; ++i) { mx = std::max(mx, v[i]); mean += v[i]; }
+      mean /= 4.0;
+      for (int i = 0; i < 4; ++i) { if (v[i] == mx) { ++cntMax; argmax = i; } else second = std::max(second, v[i]); }
+      for (int i = 0; i < 4; ++i) {
+        const int leap = std::abs(v[i] - v[(i + 1) % 4]);
+        s += leap * 1.5; if (leap > 4) s += (leap - 4) * 3;
+      }
+      if (a == b && b == c && c == d) s += 10;
+      if (cntMax == 1) { s -= 3; if (argmax == 2) s -= 3; else if (argmax == 1) s -= 1; if (mx - second >= 2) s -= 2; }
+      s += std::abs(mean - topCenter) * 0.4;
+      if (s < bestS) { bestS = s; for (int i = 0; i < 4; ++i) bv[i] = v[i]; }
+    }
+    for (int i = 0; i < 4; ++i) topLine[i] = bv[i];
+  }
+
+  // "taste check": lower = better (bass/top leaps, muddy clusters, similar chords, tension arc)
   double quality() const {
+    static const double ideal[4] = {0.25, 0.5, 1.0, 0.5};
     double q = 0;
     for (int i = 0; i < 4; ++i) {
       const auto& a = voiced[i]; const auto& b = voiced[(i + 1) % 4];
@@ -143,20 +211,25 @@ struct ChordGen {
       for (size_t k = 1; k < b.size(); ++k) pb.push_back(b[k] % 12);
       std::sort(pa.begin(), pa.end()); std::sort(pb.begin(), pb.end());
       if (pa == pb) q += 15;
-      for (size_t k = 0; k + 1 < a.size(); ++k) { const int gap = a[k + 1] - a[k]; if (gap < 3 && a[k] < 60) q += 10; }
-      if (a[1] - a[0] < 7) q += 10;
-      if (a.back() > 79 || a.back() < 62) q += 5;
+      for (size_t k = 0; k + 1 < a.size(); ++k) { const int gap = a[k + 1] - a[k]; if (gap < 3 && a[k] < 66) q += 10; }
+      if (a.back() > 79 || a.back() < 64) q += 5;
+      q += 3.0 * std::abs(tensOf(type[i]) - ideal[i] * (0.4 + 0.6 * (double) tenseV));
     }
     return q;
   }
 
-  // new progression near the pad point; several tries, the best one by quality() wins
-  void generate(juce::Random& rng, int key, float dark, float tense, bool open) {
+  // new progression near the pad point; 24 tries, the best one by quality() wins.
+  // differ = true: avoid repeating the previous progression
+  void generate(juce::Random& rng, int key, float dark, float tense, bool open, bool differ = false) {
+    const int avoid = differ ? baseIdx : -1;
     ChordGen best; double bq = 1e18;
-    for (int a = 0; a < 6; ++a) {
-      ChordGen t; t.base = pickProg(rng, dark, tense);
-      t.apply(rng, key, tense); t.revoice(open, rng); t.makeRhythm(rng);
-      const double q = t.quality();
+    for (int a = 0; a < 24; ++a) {
+      ChordGen t;
+      t.baseIdx = pickIdx(rng, dark, tense); t.base = BANK[(size_t) t.baseIdx];
+      t.topCenter = 74.0f - 4.0f * dark;
+      t.apply(rng, key, tense); t.revoice(open, rng, true); t.makeRhythm(rng);
+      double q = t.quality();
+      if (t.baseIdx == avoid) q += 25;
       if (q < bq) { bq = q; best = t; }
     }
     *this = best;
@@ -165,12 +238,12 @@ struct ChordGen {
   // "continue": same character, 1-2 chords replaced by neighbours from the bank
   void evolve(juce::Random& rng, int key, float tense, bool open) {
     ChordGen best; double bq = 1e18; bool found = false;
-    for (int a = 0; a < 8; ++a) {
+    for (int a = 0; a < 12; ++a) {
       Prog np = base; bool changed = false;
       const int changes = rng.nextFloat() < 0.4f ? 2 : 1;
       for (int m = 0; m < changes; ++m) {
         const int k = 1 + rng.nextInt(3);
-        const Prog& q = pickProg(rng, base.dk, base.tn, 0.2f);
+        const Prog& q = BANK[(size_t) pickIdx(rng, base.dk, base.tn, 0.2f)];
         const Ch nc = q.c[k]; const Ch old = np.c[k];
         if (nc.r == old.r && nc.t == old.t && nc.b == old.b) continue;
         if (nc.r == np.c[k - 1].r || nc.r == np.c[(k + 1) % 4].r) continue;
@@ -178,7 +251,7 @@ struct ChordGen {
       }
       if (!changed) continue;
       ChordGen t = *this; t.base = np;
-      t.apply(rng, key, tense); t.revoice(open, rng);
+      t.apply(rng, key, tense); t.revoice(open, rng, true);
       if (rng.nextFloat() < 0.4f) t.makeRhythm(rng);
       const double q = t.quality();
       if (q < bq) { bq = q; best = t; found = true; }
@@ -187,15 +260,19 @@ struct ChordGen {
   }
 
   void transpose(int d, bool open, juce::Random& rng) {
-    for (int i = 0; i < 4; ++i) { root[i] = (root[i] + d) % 12; bass[i] = (bass[i] + d) % 12; }
+    for (int i = 0; i < 4; ++i) {
+      root[i] = (root[i] + d) % 12; bass[i] = (bass[i] + d) % 12;
+      topLine[i] += d; if (topLine[i] > 77) topLine[i] -= 12;
+    }
     revoice(open, rng);
   }
 
-  static std::vector<int> pick(int rt, int t, const std::vector<int>& prev, juce::Random& rng) {
+  static std::vector<int> pick(int rt, int t, const std::vector<int>& prev, juce::Random& rng, int top = -1) {
     const auto& iv = IV[t]; std::vector<int> pcs;
     for (size_t i = 1; i < iv.size(); ++i) { if (iv[i] % 12 == 7 && iv.size() >= 5) continue; pcs.push_back((rt + iv[i]) % 12); }
     std::vector<std::vector<int>> cand;
-    for (int pc : pcs) { std::vector<int> a; for (int m = 54; m <= 78; ++m) if (m % 12 == pc) a.push_back(m); cand.push_back(a); }
+    // voices live above ~B3 so the 100-250 Hz zone stays free for the bass only
+    for (int pc : pcs) { std::vector<int> a; for (int m = 59; m <= 78; ++m) if (m % 12 == pc) a.push_back(m); cand.push_back(a); }
     std::vector<int> best, cur; double bestCost = 1e9;
     std::function<void(size_t)> rec = [&](size_t k) {
       if (k == cand.size()) {
@@ -203,6 +280,7 @@ struct ChordGen {
         double mean = 0; for (int v : s) mean += v; mean /= (double) s.size();
         double cost = rng.nextFloat() * 0.8;
         if (s.back() - s.front() > 15) cost += 100;
+        if (top >= 0 && s.back() != top) cost += 500;
         // no muddy clusters in the low register
         for (size_t i = 0; i + 1 < s.size(); ++i) {
           const int gap = s[i + 1] - s[i];
@@ -212,7 +290,7 @@ struct ChordGen {
           double pm = 0; for (int v : prev) pm += v; pm /= (double) prev.size();
           for (int v : s) { int d = 99; for (int q : prev) d = std::min(d, std::abs(v - q)); cost += d; }
           cost += std::abs(mean - pm) * 0.7;
-        } else cost += std::abs(mean - 64) * 2;
+        } else cost += std::abs(mean - 68) * 2;
         if (cost < bestCost) { bestCost = cost; best = s; }
         return;
       }
@@ -222,21 +300,23 @@ struct ChordGen {
     return best;
   }
 
-  void revoice(bool open, juce::Random& rng) {
+  void revoice(bool open, juce::Random& rng, bool replan = false) {
+    if (replan) planTop(rng);
     std::vector<int> prev; juce::StringArray nm; int prevBass = -1;
     for (int i = 0; i < 4; ++i) {
-      auto up = pick(root[i], type[i], prev, rng); prev = up;
-      // bass: nearest octave to the previous bass note (smooth bass line)
-      int bassNote = 33 + (((bass[i] - 33) % 12) + 12) % 12;
+      auto up = pick(root[i], type[i], prev, rng, topLine[i]); prev = up;
+      // bass: low (G1..G2), nearest octave to the previous bass note
+      int bassNote = 31 + (((bass[i] - 31) % 12) + 12) % 12;
       if (prevBass >= 0) {
         int bestD = 99;
-        for (int m = 31; m <= 46; ++m)
+        for (int m = 31; m <= 43; ++m)
           if (m % 12 == bass[i] && std::abs(m - prevBass) < bestD) { bestD = std::abs(m - prevBass); bassNote = m; }
       }
       prevBass = bassNote;
+      // open voicing: drop the 2nd-from-top note an octave, only if it stays above ~G3
       if (open && up.size() >= 4) {
         const int dn = up[up.size() - 2] - 12;
-        if (dn - bassNote >= 7) up[up.size() - 2] = dn;
+        if (dn >= 55) up[up.size() - 2] = dn;
       }
       std::sort(up.begin(), up.end());
       voiced[i].clear(); voiced[i].push_back(bassNote);

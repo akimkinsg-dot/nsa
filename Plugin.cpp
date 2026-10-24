@@ -148,7 +148,7 @@ public:
     if (newSeed) seed = uiRng.nextInt();
     juce::Random r(seed);
     juce::SpinLock::ScopedLockType l(lock);
-    state.generate(r, key, dark, tense, open != 0); ++version;
+    state.generate(r, key, dark, tense, open != 0, newSeed); ++version;
   }
   void padChanged() { generate(false); }
   void evolve() {
