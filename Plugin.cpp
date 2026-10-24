@@ -13,7 +13,7 @@ struct PadVoice : juce::SynthesiserVoice {
     inc = juce::MathConstants<double>::twoPi * juce::MidiMessage::getMidiNoteInHertz(note) / getSampleRate();
     phase = 0; level = vel * 0.1f;
     env.setSampleRate(getSampleRate());
-    env.setParameters(juce::ADSR::Parameters{0.2f, 0.6f, 0.8f, 1.2f}); // Более мягкая, долгая атака и релиз для падов
+    env.setParameters(juce::ADSR::Parameters{0.2f, 0.6f, 0.8f, 1.2f});
     env.noteOn();
   }
   void stopNote(float, bool allow) override { if (allow) env.noteOff(); else { env.reset(); clearCurrentNote(); } }
@@ -70,6 +70,15 @@ public:
     generate();
   }
 
+  double getCurrentBpm() const {
+    if (auto* ph = const_cast<NSAProcessor*>(this)->getPlayHead())
+      if (auto pos = ph->getPosition())
+        if (auto b = pos->getBpm())
+          if (*b >= 20.0 && *b <= 300.0)
+            return *b;
+    return 120.0;
+  }
+
   void processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override {
     juce::ScopedNoDenormals nd;
     buffer.clear(); midi.clear();
@@ -84,7 +93,7 @@ public:
     if (bpm < 20.0) bpm = 120.0;
     bool run = false;
     if (hostPlaying && havePpq) run = true;
-    else if (preview.load()) { ppq = internalPpq; bpm = 90.0; internalPpq += (double) n / sampleRate * 1.5; run = true; }
+    else if (preview.load()) { ppq = internalPpq; bpm = getCurrentBpm(); internalPpq += (double) n / sampleRate * (bpm / 60.0); run = true; }
 
     if (version.load() != snapVersion) {
       juce::SpinLock::ScopedTryLockType tl(lock);
@@ -121,7 +130,7 @@ public:
           int note = c[i] + octOffset;
           if (note < 0 || note > 127) continue;
 
-          int strumOffset = (doStrum ? (int)(i * 6) : 0); // Чуть мягче страм для пад-слоя
+          int strumOffset = (doStrum ? (int)(i * 6) : 0);
           int eventSample = juce::jlimit(0, n - 1, at + strumOffset);
 
           ev.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8)(i == 0 ? 80 : 60 + audioRng.nextInt(15))), eventSample);
@@ -158,12 +167,12 @@ public:
     if (newSeed) seed = uiRng.nextInt();
     juce::Random r(seed);
     juce::SpinLock::ScopedLockType l(lock);
-    state.generate(r, key, dark, tense, open != 0, newSeed); ++version;
+    state.generate(r, key, dark, tense, open != 0, getCurrentBpm(), newSeed); ++version;
   }
   void padChanged() { generate(false); }
   void evolve() {
     juce::SpinLock::ScopedLockType l(lock);
-    state.evolve(uiRng, key, tense, open != 0); ++version;
+    state.evolve(uiRng, key, tense, open != 0, getCurrentBpm()); ++version;
   }
   void setKey(int nk) {
     const int d = (((nk - lastKey) % 12) + 12) % 12;
