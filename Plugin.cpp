@@ -56,12 +56,15 @@ public:
   juce::AudioProcessorEditor* createEditor() override;
 
   void getStateInformation(juce::MemoryBlock& d) override {
-    juce::MemoryOutputStream o(d, true); o.writeInt(key); o.writeInt(mood); o.writeInt(open);
+    juce::MemoryOutputStream o(d, true);
+    o.writeInt(key); o.writeInt(open); o.writeFloat(dark); o.writeFloat(tense);
   }
   void setStateInformation(const void* data, int size) override {
-    if (size < 12) return;
+    if (size < 16) return;
     juce::MemoryInputStream in(data, (size_t) size, false);
-    key = juce::jlimit(0, 11, in.readInt()); mood = juce::jlimit(0, 4, in.readInt()); open = juce::jlimit(0, 1, in.readInt());
+    key = juce::jlimit(0, 11, in.readInt()); open = juce::jlimit(0, 1, in.readInt());
+    dark = juce::jlimit(0.0f, 1.0f, in.readFloat()); tense = juce::jlimit(0.0f, 1.0f, in.readFloat());
+    lastKey = key;
     generate();
   }
 
@@ -140,9 +143,23 @@ public:
     midi.swapWith(ev);
   }
 
-  void generate() {
+  // new progression. newSeed=false: same "dice", so moving the pad changes the result smoothly
+  void generate(bool newSeed = true) {
+    if (newSeed) seed = uiRng.nextInt();
+    juce::Random r(seed);
     juce::SpinLock::ScopedLockType l(lock);
-    state.generate(uiRng, key, mood); state.revoice(open != 0, uiRng); ++version;
+    state.generate(r, key, dark, tense, open != 0); ++version;
+  }
+  void padChanged() { generate(false); }
+  void evolve() {
+    juce::SpinLock::ScopedLockType l(lock);
+    state.evolve(uiRng, key, tense, open != 0); ++version;
+  }
+  void setKey(int nk) {
+    const int d = (((nk - lastKey) % 12) + 12) % 12;
+    lastKey = nk; key = nk;
+    juce::SpinLock::ScopedLockType l(lock);
+    state.transpose(d, open != 0, uiRng); ++version;
   }
   void revoice() { juce::SpinLock::ScopedLockType l(lock); state.revoice(open != 0, uiRng); ++version; }
   void setPreview(bool on) { if (on) internalPpq = 0; preview = on; }
@@ -172,7 +189,8 @@ public:
     return f;
   }
 
-  std::atomic<int> key{0}, mood{0}, open{0};
+  std::atomic<int> key{0}, open{0};
+  std::atomic<float> dark{0.6f}, tense{0.4f};
   std::atomic<bool> preview{false};
 
 private:
@@ -181,7 +199,7 @@ private:
   juce::SpinLock lock;
   ChordGen state, snap;
   std::atomic<int> version{0};
-  int snapVersion = -1;
+  int snapVersion = -1, seed = 1, lastKey = 0;
   juce::Random uiRng, audioRng;
   std::vector<Act> active;
   double sampleRate = 44100.0, internalPpq = 0.0, expectedPpq = 0.0;
@@ -193,7 +211,7 @@ struct DragBox : juce::Component {
   explicit DragBox(NSAProcessor& p) : proc(p) { setMouseCursor(juce::MouseCursor::DraggingHandCursor); }
   void paint(juce::Graphics& g) override {
     g.setColour(juce::Colour(0xff40267a)); g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(1), 10.0f);
-    g.setColour(juce::Colours::white); g.setFont(juce::Font(17.0f));
+    g.setColour(juce::Colours::white); g.setFont(17.0f);
     g.drawText("DRAG MIDI  >>  drop on a track", getLocalBounds(), juce::Justification::centred);
   }
   void mouseDrag(const juce::MouseEvent& e) override {
@@ -209,20 +227,49 @@ struct DragBox : juce::Component {
   NSAProcessor& proc; bool dragging = false;
 };
 
+// 2D pad: left = light, right = dark, bottom = calm, top = tense
+struct PadBox : juce::Component {
+  explicit PadBox(NSAProcessor& p) : proc(p) {}
+  void paint(juce::Graphics& g) override {
+    auto b = getLocalBounds().toFloat().reduced(1);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff8a7be0), b.getX(), 0.0f, juce::Colour(0xff0b0818), b.getRight(), 0.0f, false));
+    g.fillRoundedRectangle(b, 10.0f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0x66ff4d6d), 0.0f, b.getY(), juce::Colour(0x00ff4d6d), 0.0f, b.getBottom(), false));
+    g.fillRoundedRectangle(b, 10.0f);
+    g.setColour(juce::Colours::white.withAlpha(0.85f)); g.setFont(12.0f);
+    g.drawText("light", 10, getHeight() / 2 - 8, 60, 16, juce::Justification::left);
+    g.drawText("dark", getWidth() - 70, getHeight() / 2 - 8, 60, 16, juce::Justification::right);
+    g.drawText("tense", 0, 5, getWidth(), 16, juce::Justification::centred);
+    g.drawText("calm", 0, getHeight() - 21, getWidth(), 16, juce::Justification::centred);
+    const float x = b.getX() + proc.dark.load() * b.getWidth();
+    const float y = b.getBottom() - proc.tense.load() * b.getHeight();
+    g.setColour(juce::Colours::white); g.fillEllipse(x - 9.0f, y - 9.0f, 18.0f, 18.0f);
+    g.setColour(juce::Colour(0xff40267a)); g.drawEllipse(x - 9.0f, y - 9.0f, 18.0f, 18.0f, 2.0f);
+  }
+  void mouseDown(const juce::MouseEvent& e) override { move(e); }
+  void mouseDrag(const juce::MouseEvent& e) override { move(e); }
+  void move(const juce::MouseEvent& e) {
+    auto b = getLocalBounds().toFloat().reduced(1);
+    proc.dark = juce::jlimit(0.0f, 1.0f, (e.position.x - b.getX()) / b.getWidth());
+    proc.tense = juce::jlimit(0.0f, 1.0f, (b.getBottom() - e.position.y) / b.getHeight());
+    proc.padChanged();
+    repaint();
+  }
+  NSAProcessor& proc;
+};
+
 class NSAEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
-  explicit NSAEditor(NSAProcessor& p) : AudioProcessorEditor(&p), proc(p), drag(p) {
-    setSize(380, 250);
+  explicit NSAEditor(NSAProcessor& p) : AudioProcessorEditor(&p), proc(p), pad(p), drag(p) {
+    setSize(380, 390);
     keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"}, 1);
-    moodBox.addItemList(juce::StringArray{"Warm","Dark","Dreamy","Sad","Sensual"}, 1);
     voiBox.addItemList(juce::StringArray{"Close","Open"}, 1);
     keyBox.setSelectedItemIndex(proc.key, juce::dontSendNotification);
-    moodBox.setSelectedItemIndex(proc.mood, juce::dontSendNotification);
     voiBox.setSelectedItemIndex(proc.open, juce::dontSendNotification);
-    keyBox.onChange = [this] { proc.key = keyBox.getSelectedItemIndex(); proc.generate(); };
-    moodBox.onChange = [this] { proc.mood = moodBox.getSelectedItemIndex(); proc.generate(); };
+    keyBox.onChange = [this] { proc.setKey(keyBox.getSelectedItemIndex()); };
     voiBox.onChange = [this] { proc.open = voiBox.getSelectedItemIndex(); proc.revoice(); };
     genBtn.setButtonText("Generate"); genBtn.onClick = [this] { proc.generate(); };
+    contBtn.setButtonText("Continue"); contBtn.onClick = [this] { proc.evolve(); };
     preBtn.setClickingTogglesState(true);
     preBtn.setToggleState(proc.preview.load(), juce::dontSendNotification);
     preBtn.setButtonText(proc.preview.load() ? "Stop" : "Preview");
@@ -231,30 +278,31 @@ public:
       proc.setPreview(on);
       preBtn.setButtonText(on ? "Stop" : "Preview");
     };
-    label.setJustificationType(juce::Justification::centred); label.setFont(juce::Font(15.0f));
+    label.setJustificationType(juce::Justification::centred); label.setFont(15.0f);
     label.setColour(juce::Label::textColourId, juce::Colours::white);
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&keyBox, &moodBox, &voiBox, &genBtn, &preBtn, &label, &drag})
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&keyBox, &voiBox, &pad, &genBtn, &contBtn, &preBtn, &label, &drag})
       addAndMakeVisible(c);
     startTimerHz(4); timerCallback();
   }
   void paint(juce::Graphics& g) override {
     g.fillAll(juce::Colour(0xff14101f));
-    g.setColour(juce::Colour(0xffb08cff)); g.setFont(juce::Font(18.0f));
+    g.setColour(juce::Colour(0xffb08cff)); g.setFont(18.0f);
     g.drawText("NSA CHORDS", 14, 6, 200, 24, juce::Justification::left);
   }
   void resized() override {
     auto r = getLocalBounds().reduced(14); r.removeFromTop(26);
-    auto row = r.removeFromTop(28); int w = row.getWidth() / 3;
-    keyBox.setBounds(row.removeFromLeft(w).reduced(3, 0)); moodBox.setBounds(row.removeFromLeft(w).reduced(3, 0)); voiBox.setBounds(row.reduced(3, 0));
-    r.removeFromTop(8); row = r.removeFromTop(30);
-    genBtn.setBounds(row.removeFromLeft(row.getWidth() / 2).reduced(3, 0)); preBtn.setBounds(row.reduced(3, 0));
+    auto row = r.removeFromTop(28); int w = row.getWidth() / 2;
+    keyBox.setBounds(row.removeFromLeft(w).reduced(3, 0)); voiBox.setBounds(row.reduced(3, 0));
+    r.removeFromTop(8); pad.setBounds(r.removeFromTop(150).reduced(3, 0));
+    r.removeFromTop(8); row = r.removeFromTop(30); int bw = row.getWidth() / 3;
+    genBtn.setBounds(row.removeFromLeft(bw).reduced(3, 0)); contBtn.setBounds(row.removeFromLeft(bw).reduced(3, 0)); preBtn.setBounds(row.reduced(3, 0));
     r.removeFromTop(8); label.setBounds(r.removeFromTop(40));
     r.removeFromTop(6); drag.setBounds(r);
   }
   void timerCallback() override { label.setText(proc.getNames(), juce::dontSendNotification); }
 private:
   NSAProcessor& proc;
-  juce::ComboBox keyBox, moodBox, voiBox; juce::TextButton genBtn, preBtn; juce::Label label; DragBox drag;
+  juce::ComboBox keyBox, voiBox; juce::TextButton genBtn, contBtn, preBtn; juce::Label label; PadBox pad; DragBox drag;
 };
 
 juce::AudioProcessorEditor* NSAProcessor::createEditor() { return new NSAEditor(*this); }
