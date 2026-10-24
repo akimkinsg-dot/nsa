@@ -13,7 +13,7 @@ struct PadVoice : juce::SynthesiserVoice {
     inc = juce::MathConstants<double>::twoPi * juce::MidiMessage::getMidiNoteInHertz(note) / getSampleRate();
     phase = 0; level = vel * 0.1f;
     env.setSampleRate(getSampleRate());
-    env.setParameters(juce::ADSR::Parameters{0.12f, 0.5f, 0.7f, 0.9f});
+    env.setParameters(juce::ADSR::Parameters{0.2f, 0.6f, 0.8f, 1.2f}); // Более мягкая, долгая атака и релиз для падов
     env.noteOn();
   }
   void stopNote(float, bool allow) override { if (allow) env.noteOff(); else { env.reset(); clearCurrentNote(); } }
@@ -46,7 +46,7 @@ public:
   bool acceptsMidi() const override { return true; }
   bool producesMidi() const override { return true; }
   bool isMidiEffect() const override { return false; }
-  double getTailLengthSeconds() const override { return 1.0; }
+  double getTailLengthSeconds() const override { return 1.5; }
   int getNumPrograms() override { return 1; }
   int getCurrentProgram() override { return 0; }
   void setCurrentProgram(int) override {}
@@ -121,10 +121,10 @@ public:
           int note = c[i] + octOffset;
           if (note < 0 || note > 127) continue;
 
-          int strumOffset = (doStrum ? (int)(i * 4) : 0);
+          int strumOffset = (doStrum ? (int)(i * 6) : 0); // Чуть мягче страм для пад-слоя
           int eventSample = juce::jlimit(0, n - 1, at + strumOffset);
 
-          ev.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8)(i == 0 ? 85 : 66 + audioRng.nextInt(18))), eventSample);
+          ev.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8)(i == 0 ? 80 : 60 + audioRng.nextInt(15))), eventSample);
           active.push_back(Act{note, t + h.len});
         }
       };
@@ -190,8 +190,8 @@ public:
         if (skipB && j == 0) continue;
         int note = c[j] + octOffset;
         if (note < 0 || note > 127) continue;
-        int tickOffset = doStrum ? (int)(j * 15) : 0;
-        int vel = j == 0 ? 85 : 66 + uiRng.nextInt(18);
+        int tickOffset = doStrum ? (int)(j * 20) : 0;
+        int vel = j == 0 ? 80 : 60 + uiRng.nextInt(15);
         seq.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), on + tickOffset);
         seq.addEvent(juce::MidiMessage::noteOff(1, note), offT);
       }

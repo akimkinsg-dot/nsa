@@ -61,14 +61,22 @@ inline const std::vector<Prog> BANK = {
 };
 
 struct Hit { double start, len; int chord; };
-struct Pat { int n; double s[3], l[3]; };
-inline const Pat PATS[6] = {
-  {1, {0,0,0},     {4,0,0}},
-  {2, {0,2.5,0},   {2.5,1.5,0}},
-  {3, {0,2,3},     {2,1,1}},
-  {3, {0,1.5,3},   {1.5,1.5,1}},
-  {2, {0,1.5,0},   {1,2.5,0}},
-  {1, {0.5,0,0},   {3.5,0,0}}
+
+// НАСТРОЙКА ПОД ПАДЫ: Убираем частые нарезки и короткие стаб-ноты. 
+// Теперь аккорды длинные, протяжные и гармоничные (от 2 до 4 аккордов на 4 такта / 16 долей).
+struct PadPattern { int n; double s[4], l[4]; int cMap[4]; };
+inline const PadPattern PAD_PATTERNS[4] = {
+  // 1. Два длинных аккорда (каждый по 2 такта / 8 долей) — идеальный широкий фон
+  {2, {0.0, 8.0, 0, 0}, {8.0, 8.0, 0, 0}, {0, 2, 0, 0}},
+  
+  // 2. Три аккорда (два по 4 доли, один длинный на 2 такта / 8 долей)
+  {3, {0.0, 4.0, 8.0, 0}, {4.0, 4.0, 8.0, 0}, {0, 1, 2, 0}},
+  
+  // 3. Четыре гармоничных аккорда (каждый ровно по 1 такту / 4 доли) — плавная смена раз в такт
+  {4, {0.0, 4.0, 8.0, 12.0}, {4.0, 4.0, 4.0, 4.0}, {0, 1, 2, 3}},
+
+  // 4. Вариация из трех протяжных аккордов с развитием (разная длина)
+  {3, {0.0, 6.0, 10.0, 0}, {6.0, 4.0, 6.0, 0}, {0, 1, 2, 0}}
 };
 
 struct ChordGen {
@@ -94,22 +102,16 @@ struct ChordGen {
     return (int) n - 1;
   }
 
+  // РЕЖИМ ПАДОВ: Создаем протяжные, плавные ноты без рваного ритма
   void makeRhythm(juce::Random& rng) {
-    hits.clear(); int prevPat = -1;
-    for (int bar = 0; bar < 4; ++bar) {
-      const int m = (bar == 0 ? 5 : 6);
-      int pi = rng.nextInt(m);
-      if (pi == prevPat) pi = (pi + 1 + rng.nextInt(4)) % m;
-      prevPat = pi;
-      const Pat& p = PATS[pi];
-      for (int k = 0; k < p.n; ++k) hits.push_back(Hit{ bar * 4.0 + p.s[k], p.l[k], bar });
-      if (bar > 0 && p.s[0] == 0.0 && rng.nextFloat() < 0.35f) {
-        Hit& f = hits[hits.size() - (size_t) p.n];
-        f.start -= 0.5; f.len += 0.5;
-      }
+    hits.clear();
+    int pi = rng.nextInt(4); // Выбираем один из 4 патернов протяжных падов
+    const PadPattern& p = PAD_PATTERNS[pi];
+    
+    for (int k = 0; k < p.n; ++k) {
+      int chordIndex = p.cMap[k] % 4;
+      hits.push_back(Hit{ p.s[k], p.l[k], chordIndex });
     }
-    for (size_t i = 0; i + 1 < hits.size(); ++i)
-      hits[i].len = std::min(hits[i].len, hits[i + 1].start - hits[i].start);
   }
 
   void apply(juce::Random& rng, int key, float tense) {
@@ -233,7 +235,7 @@ struct ChordGen {
       if (!changed) continue;
       ChordGen t = *this; t.base = np;
       t.apply(rng, key, tense); t.revoice(open, rng, true);
-      if (rng.nextFloat() < 0.4f) t.makeRhythm(rng);
+      // При эволюции падов ритм держим стабильным или реже меняем
       const double q = t.quality();
       if (q < bq) { bq = q; best = t; found = true; }
     }
