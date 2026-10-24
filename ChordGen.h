@@ -5,40 +5,76 @@
 #include <functional>
 #include <cmath>
 
-enum { MAJ7, MAJ9, M7, M9, M11, D9, D13, MAJ7S11, D7B9, SUS9 };
+enum { MAJ7, MAJ9, M7, M9, M11, D9, D13, MAJ7S11, D7B9, SUS9, MMAJ7, SIX9, ADD9, M7B5 };
 inline const std::vector<int> IV[] = {
   {0,4,7,11},{0,4,7,11,14},{0,3,7,10},{0,3,7,10,14},{0,3,7,10,14,17},
-  {0,4,7,10,14},{0,4,10,14,21},{0,4,7,11,18},{0,4,7,10,13},{0,5,7,10,14}};
-inline const char* SUF[] = {"maj7","maj9","m7","m9","m11","9","13","maj7#11","7b9","9sus4"};
+  {0,4,7,10,14},{0,4,10,14,21},{0,4,7,11,18},{0,4,7,10,13},{0,5,7,10,14},
+  {0,3,7,11},{0,4,7,9,14},{0,4,7,14},{0,3,6,10}};
+inline const char* SUF[] = {"maj7","maj9","m7","m9","m11","9","13","maj7#11","7b9","9sus4","m(maj7)","6/9","add9","m7b5"};
 inline const char* NOTE_NAMES[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
 
-struct Prog { int r[4]; int t[4]; };
+// One chord: root offset from the key, chord type, bass offset (-1 = bass is the root)
+struct Ch { int r, t, b; };
+struct Prog { Ch c[4]; };
+inline Ch mk(int r, int t, int b = -1) { return Ch{r, t, b}; }
+inline Prog mkP(Ch a, Ch b, Ch c, Ch d) { return Prog{{a, b, c, d}}; }
+
+// Starter bank: 5 moods x 5 progressions. Order of each: home -> departure -> color/tension -> soft return
+// Moods: 0 Warm, 1 Dark, 2 Dreamy, 3 Sad, 4 Sensual
 inline const std::vector<Prog> MOODS[5] = {
- { {{0,4,9,5},{MAJ9,M9,M9,MAJ9}}, {{0,5,4,9},{MAJ9,MAJ9,M7,M11}}, {{5,4,2,7},{MAJ9,M9,M9,D13}},
-   {{2,7,0,5},{M9,D13,MAJ9,MAJ7S11}}, {{0,9,2,7},{MAJ7,M9,M9,SUS9}} },
- { {{0,8,3,10},{M9,MAJ9,MAJ9,D9}}, {{0,5,8,7},{M11,M9,MAJ7S11,D7B9}}, {{0,3,10,8},{M9,MAJ7,D9,MAJ9}},
-   {{5,0,8,7},{M9,M11,MAJ9,D7B9}}, {{0,10,8,7},{M9,D13,MAJ9,D7B9}} },
- { {{0,8,5,10},{MAJ9,MAJ7S11,MAJ9,D9}}, {{5,4,9,2},{MAJ7S11,M9,M11,SUS9}},
-   {{0,4,5,7},{MAJ7S11,M9,MAJ9,SUS9}}, {{3,0,5,10},{MAJ9,MAJ7S11,MAJ9,MAJ9}} },
- { {{0,8,5,7},{M9,MAJ9,M9,D7B9}}, {{0,3,8,10},{M11,MAJ9,MAJ7,D9}}, {{0,5,10,3},{M9,M11,D9,MAJ9}},
-   {{8,7,0,5},{MAJ9,D7B9,M11,M9}} },
- { {{5,7,4,9},{MAJ9,D13,M9,M11}}, {{0,3,5,7},{MAJ9,D9,MAJ9,SUS9}}, {{2,7,4,9},{M9,D13,M9,D7B9}},
-   {{0,2,4,9},{MAJ7,D9,M7,M9}} }
+  // Warm
+  { mkP(mk(0,MAJ9), mk(9,M9), mk(5,MAJ7S11), mk(5,M9)),
+    mkP(mk(0,MAJ9), mk(9,M9), mk(2,M9), mk(7,D13)),
+    mkP(mk(5,MAJ9), mk(4,M7), mk(9,M9), mk(2,M11)),
+    mkP(mk(0,SIX9), mk(8,MAJ7S11), mk(5,MAJ9), mk(7,SUS9)),
+    mkP(mk(0,ADD9), mk(7,ADD9,11), mk(9,M9), mk(5,MAJ9)) },
+  // Dark
+  { mkP(mk(0,M9), mk(8,MAJ9), mk(5,M9), mk(7,D7B9)),
+    mkP(mk(0,M11), mk(5,M9), mk(10,D9), mk(8,MAJ7S11)),
+    mkP(mk(0,MMAJ7), mk(0,M7,10), mk(8,MAJ9), mk(7,D7B9)),
+    mkP(mk(0,M9), mk(10,D9), mk(3,MAJ9), mk(5,M11)),
+    mkP(mk(0,M11), mk(8,MAJ7S11), mk(1,MAJ9), mk(7,D7B9)) },
+  // Dreamy
+  { mkP(mk(0,MAJ9), mk(8,MAJ7S11), mk(5,MAJ9), mk(10,D9)),
+    mkP(mk(5,MAJ7S11), mk(4,M9), mk(9,M11), mk(7,SUS9)),
+    mkP(mk(0,SIX9), mk(2,D9), mk(4,M9), mk(5,MAJ7S11)),
+    mkP(mk(9,M9), mk(5,MAJ9), mk(0,MAJ9), mk(7,SUS9)),
+    mkP(mk(0,MAJ7), mk(3,MAJ9), mk(5,MAJ7S11), mk(7,SUS9)) },
+  // Sad
+  { mkP(mk(0,M9), mk(8,MAJ9), mk(3,MAJ9), mk(10,D9)),
+    mkP(mk(0,M11), mk(5,M9), mk(8,MAJ7S11), mk(7,D7B9)),
+    mkP(mk(5,M9), mk(0,M11), mk(8,MAJ9), mk(7,D7B9)),
+    mkP(mk(0,M9), mk(10,D13), mk(8,MAJ9), mk(7,D7B9)),
+    mkP(mk(0,MMAJ7), mk(5,M9), mk(2,M7B5), mk(7,D7B9)) },
+  // Sensual
+  { mkP(mk(5,MAJ9), mk(7,D13), mk(4,M9), mk(9,M11)),
+    mkP(mk(0,MAJ9), mk(3,D9), mk(5,MAJ7S11), mk(7,SUS9)),
+    mkP(mk(2,M9), mk(7,D13), mk(4,M9), mk(9,D7B9)),
+    mkP(mk(0,MAJ7), mk(2,D9), mk(4,M7), mk(9,M9)),
+    mkP(mk(0,M9), mk(5,D9), mk(3,MAJ9), mk(10,MAJ9)) }
 };
 
 struct ChordGen {
-  int root[4] = {0,0,0,0}, type[4] = {MAJ9,MAJ9,MAJ9,MAJ9};
+  int root[4] = {0,0,0,0}, type[4] = {MAJ9,MAJ9,MAJ9,MAJ9}, bass[4] = {0,0,0,0};
   std::vector<int> voiced[4];
   juce::String names;
 
   void generate(juce::Random& rng, int key, int mood) {
-    const auto& list = MOODS[juce::jlimit(0, 4, mood)];
+    mood = juce::jlimit(0, 4, mood);
+    const auto& list = MOODS[mood];
     const Prog& p = list[(size_t) rng.nextInt((int) list.size())];
-    int rot = rng.nextInt(4);
+    const bool minorish = (mood == 1 || mood == 3);
     for (int i = 0; i < 4; ++i) {
-      int t = p.t[(i + rot) % 4]; float r = rng.nextFloat();
-      if (t == MAJ9 && r < 0.2f) t = MAJ7; else if (t == M9 && r < 0.25f) t = M11; else if (t == M7 && r < 0.4f) t = M9;
-      root[i] = (p.r[(i + rot) % 4] + key) % 12; type[i] = t;
+      const Ch c = p.c[i];
+      int t = c.t; float r = rng.nextFloat();
+      if (i == 0 && c.r == 0 && minorish && (t == M9 || t == M11) && r < 0.2f) t = MMAJ7;
+      else if (i == 0 && !minorish && t == MAJ9 && r < 0.25f) t = SIX9;
+      else if (i > 0 && t == MAJ9 && r < 0.2f) t = MAJ7S11;
+      else if (t == M9 && r < 0.25f) t = M11;
+      else if ((t == M7 || t == MAJ7) && r < 0.4f) t = (t == M7 ? M9 : MAJ9);
+      root[i] = (c.r + key) % 12;
+      bass[i] = ((c.b < 0 ? c.r : c.b) + key) % 12;
+      type[i] = t;
     }
   }
 
@@ -54,6 +90,11 @@ struct ChordGen {
         double mean = 0; for (int v : s) mean += v; mean /= (double) s.size();
         double cost = rng.nextFloat() * 0.8;
         if (s.back() - s.front() > 15) cost += 100;
+        // no muddy clusters in the low register
+        for (size_t i = 0; i + 1 < s.size(); ++i) {
+          int gap = s[i + 1] - s[i];
+          if (gap < 3 && s[i] < 66) cost += 30; else if (gap == 1) cost += 3;
+        }
         if (!prev.empty()) {
           double pm = 0; for (int v : prev) pm += v; pm /= (double) prev.size();
           for (int v : s) { int d = 99; for (int q : prev) d = std::min(d, std::abs(v - q)); cost += d; }
@@ -72,11 +113,17 @@ struct ChordGen {
     std::vector<int> prev; juce::StringArray nm;
     for (int i = 0; i < 4; ++i) {
       auto up = pick(root[i], type[i], prev, rng); prev = up;
-      if (open && up.size() >= 4) up[up.size() - 2] -= 12;
+      const int bassNote = 36 + bass[i];
+      if (open && up.size() >= 4) {
+        int dn = up[up.size() - 2] - 12;
+        if (dn - bassNote >= 7) up[up.size() - 2] = dn;
+      }
       std::sort(up.begin(), up.end());
-      voiced[i].clear(); voiced[i].push_back(36 + root[i]);
+      voiced[i].clear(); voiced[i].push_back(bassNote);
       for (int v : up) voiced[i].push_back(v);
-      nm.add(juce::String(NOTE_NAMES[root[i]]) + SUF[type[i]]);
+      juce::String n = juce::String(NOTE_NAMES[root[i]]) + SUF[type[i]];
+      if (bass[i] != root[i]) n += juce::String("/") + NOTE_NAMES[bass[i]];
+      nm.add(n);
     }
     names = nm.joinIntoString("   |   ");
   }
