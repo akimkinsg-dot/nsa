@@ -32,47 +32,43 @@ struct Prog { Ch c[4]; float dk, tn; };
 inline Ch mk(int r, int t, int b = -1) { return Ch{r, t, b}; }
 inline Prog mkP(Ch a, Ch b, Ch c, Ch d, float dk, float tn) { return Prog{{a, b, c, d}, dk, tn}; }
 
+// ЭЛИТАРНЫЙ БАНК R&B / TRAPSOUL ПРОГРЕССИЙ (ТОЛЬКО ВЫСШИЙ КЛАСС, ИДЕАЛЬНО ВЫВЕРЕННЫЕ ЦЕПОЧКИ)
 inline const std::vector<Prog> BANK = {
-  mkP(mk(0,MAJ9), mk(9,M9), mk(5,MAJ7S11), mk(5,M9),            0.30f, 0.25f),
-  mkP(mk(0,MAJ9), mk(9,M9), mk(2,M9), mk(7,D13),                0.15f, 0.45f),
-  mkP(mk(5,MAJ9), mk(4,M7), mk(9,M9), mk(2,M11),                0.20f, 0.15f),
-  mkP(mk(0,SIX9), mk(8,MAJ7S11), mk(5,MAJ9), mk(7,SUS9),        0.20f, 0.30f),
-  mkP(mk(0,ADD9), mk(7,ADD9,11), mk(9,M9), mk(5,MAJ9),          0.10f, 0.10f),
-  mkP(mk(0,M9), mk(8,MAJ9), mk(5,M9), mk(7,D7B9),               0.80f, 0.65f),
-  mkP(mk(0,M11), mk(5,M9), mk(10,D9), mk(8,MAJ7S11),            0.75f, 0.50f),
-  mkP(mk(0,MMAJ7), mk(0,M7,10), mk(8,MAJ9), mk(7,D7B9),         0.90f, 0.80f),
-  mkP(mk(0,M9), mk(10,D9), mk(3,MAJ9), mk(5,M11),               0.70f, 0.35f),
-  mkP(mk(0,M11), mk(8,MAJ7S11), mk(1,MAJ9), mk(7,D7B9),         0.90f, 0.75f),
-  mkP(mk(0,MAJ9), mk(8,MAJ7S11), mk(5,MAJ9), mk(10,D9),         0.25f, 0.20f),
-  mkP(mk(5,MAJ7S11), mk(4,M9), mk(9,M11), mk(7,SUS9),           0.30f, 0.30f),
-  mkP(mk(0,SIX9), mk(2,D9), mk(4,M9), mk(5,MAJ7S11),            0.20f, 0.25f),
-  mkP(mk(9,M9), mk(5,MAJ9), mk(0,MAJ9), mk(7,SUS9),             0.40f, 0.15f),
-  mkP(mk(0,MAJ7), mk(3,MAJ9), mk(5,MAJ7S11), mk(7,SUS9),        0.30f, 0.30f),
-  mkP(mk(0,M9), mk(8,MAJ9), mk(3,MAJ9), mk(10,D9),              0.65f, 0.15f),
-  mkP(mk(0,M11), mk(5,M9), mk(8,MAJ7S11), mk(7,D7B9),           0.70f, 0.45f),
-  mkP(mk(5,M9), mk(0,M11), mk(8,MAJ9), mk(7,D7B9),              0.75f, 0.50f),
-  mkP(mk(0,M9), mk(10,D13), mk(8,MAJ9), mk(7,D7B9),             0.70f, 0.60f),
-  mkP(mk(0,MMAJ7), mk(5,M9), mk(2,M7B5), mk(7,D7B9),            0.85f, 0.85f),
-  mkP(mk(5,MAJ9), mk(7,D13), mk(4,M9), mk(9,M11),               0.30f, 0.40f),
-  mkP(mk(0,MAJ9), mk(3,D9), mk(5,MAJ7S11), mk(7,SUS9),          0.25f, 0.45f),
-  mkP(mk(2,M9), mk(7,D13), mk(4,M9), mk(9,D7B9),                0.50f, 0.70f),
-  mkP(mk(0,MAJ7), mk(2,D9), mk(4,M7), mk(9,M9),                 0.30f, 0.35f),
-  mkP(mk(0,M9), mk(5,D9), mk(3,MAJ9), mk(10,MAJ9),              0.50f, 0.30f),
+  // --- Candlelight & Dates (Левый нижний квадрант: Теплый соул, мажорные переливы, интимные 90-е) ---
+  mkP(mk(0,MAJ9), mk(9,M9), mk(5,MAJ9), mk(7,SUS9),              0.15f, 0.15f),
+  mkP(mk(0,SIX9), mk(5,MAJ9), mk(2,M9), mk(7,ADD9),              0.20f, 0.10f),
+  mkP(mk(5,MAJ9), mk(4,M9), mk(9,M9), mk(0,MAJ9),               0.10f, 0.15f),
+  mkP(mk(0,ADD9), mk(7,SUS9), mk(9,M9), mk(5,MAJ7S11),          0.25f, 0.20f),
   mkP(mk(2,M9), mk(7,SUS9), mk(0,MAJ9), mk(9,M9),               0.20f, 0.20f),
-  mkP(mk(9,M11), mk(2,M9), mk(7,D13), mk(0,MAJ9),               0.35f, 0.30f),
-  mkP(mk(5,MAJ9), mk(2,M9), mk(7,D7B9), mk(0,M9),               0.60f, 0.55f),
-  mkP(mk(0,ADD9), mk(4,M9), mk(5,MAJ9), mk(7,SUS9),             0.15f, 0.15f),
-  mkP(mk(0,M9), mk(3,MAJ9), mk(8,MAJ7S11), mk(7,D7B9),          0.85f, 0.70f),
-  mkP(mk(2,M7B5), mk(7,D7B9), mk(0,M11), mk(9,M9),              0.75f, 0.80f),
+  mkP(mk(0,MAJ7), mk(3,MAJ9), mk(5,MAJ9), mk(7,SUS9),           0.20f, 0.25f),
+  mkP(mk(9,M9), mk(5,MAJ9), mk(0,MAJ9), mk(7,SUS9),             0.30f, 0.15f),
   mkP(mk(5,MAJ7S11), mk(4,M7), mk(2,M9), mk(0,MAJ9),            0.25f, 0.25f),
-  mkP(mk(9,M9), mk(7,SUS9), mk(0,MAJ9), mk(5,MAJ9),             0.30f, 0.15f),
-  mkP(mk(0,M11), mk(8,MAJ9), mk(5,M9), mk(7,SUS9),              0.80f, 0.40f),
+
+  // --- 4 AM Intimacy (Правый нижний квадрант: Глубокие ночные миноры, бархат, m11, m9) ---
+  mkP(mk(0,M11), mk(8,MAJ9), mk(5,M9), mk(7,SUS9),              0.80f, 0.35f),
+  mkP(mk(0,M9), mk(8,MAJ9), mk(5,M9), mk(7,D9),                 0.75f, 0.40f),
+  mkP(mk(9,M11), mk(2,M9), mk(7,D13), mk(0,MAJ9),               0.65f, 0.35f),
+  mkP(mk(0,M9), mk(3,MAJ9), mk(8,MAJ9), mk(7,D9),                0.70f, 0.30f),
+  mkP(mk(5,M9), mk(0,M11), mk(8,MAJ9), mk(7,D7B9),              0.75f, 0.45f),
+  mkP(mk(0,M11), mk(5,M9), mk(10,D9), mk(8,MAJ9),               0.70f, 0.40f),
+  mkP(mk(0,M9), mk(10,D13), mk(8,MAJ9), mk(7,D7B9),             0.70f, 0.50f),
+
+  // --- Ethereal Drama (Левый верхний квадрант: Воздушная драма, мажорные надстройки #11, чувственный трепет) ---
+  mkP(mk(0,MAJ9), mk(9,M9), mk(5,MAJ7S11), mk(5,M9),            0.30f, 0.55f),
+  mkP(mk(0,SIX9), mk(8,MAJ7S11), mk(5,MAJ9), mk(7,SUS9),        0.25f, 0.60f),
+  mkP(mk(5,MAJ7S11), mk(4,M9), mk(9,M11), mk(7,SUS9),           0.30f, 0.50f),
+  mkP(mk(0,MAJ7S11), mk(2,D9), mk(4,M9), mk(5,MAJ7S11),         0.35f, 0.65f),
+  mkP(mk(0,MAJ9), mk(3,D9), mk(5,MAJ7S11), mk(7,SUS9),          0.30f, 0.60f),
+
+  // --- Toxic TrapSoul (Правый верхний квадрант: Мрачный ночной мегаполис, tension, d7b9, m7b5, mmaj7) ---
   mkP(mk(0,MMAJ7), mk(8,MAJ7S11), mk(5,M11), mk(7,D7B9),        0.95f, 0.85f),
-  mkP(mk(0,M9), mk(2,M7B5), mk(7,D7B9), mk(0,M11),              0.85f, 0.75f),
-  mkP(mk(5,MAJ9), mk(8,MAJ9), mk(0,M11), mk(7,D13),             0.65f, 0.50f),
-  mkP(mk(0,SIX9), mk(5,MAJ7S11), mk(9,M9), mk(7,D7B9),          0.40f, 0.45f),
-  mkP(mk(0,M9), mk(7,D13), mk(5,MAJ9), mk(10,D9),               0.55f, 0.40f),
-  mkP(mk(9,M11), mk(5,MAJ7S11), mk(2,M9), mk(7,D7B9),           0.70f, 0.65f)
+  mkP(mk(0,M9), mk(2,M7B5), mk(7,D7B9), mk(0,M11),              0.85f, 0.80f),
+  mkP(mk(0,MMAJ7), mk(0,M7,10), mk(8,MAJ9), mk(7,D7B9),         0.90f, 0.80f),
+  mkP(mk(0,M11), mk(8,MAJ7S11), mk(1,MAJ9), mk(7,D7B9),         0.90f, 0.75f),
+  mkP(mk(0,MMAJ7), mk(5,M9), mk(2,M7B5), mk(7,D7B9),            0.85f, 0.85f),
+  mkP(mk(2,M7B5), mk(7,D7B9), mk(0,M11), mk(9,M9),              0.80f, 0.80f),
+  mkP(mk(9,M11), mk(5,MAJ7S11), mk(2,M9), mk(7,D7B9),           0.75f, 0.75f),
+  mkP(mk(0,M9), mk(8,MAJ9), mk(3,MAJ9), mk(7,D7B9),             0.80f, 0.70f)
 };
 
 struct Hit { double start, len; int chord; };
@@ -106,12 +102,12 @@ struct ChordGen {
   float topCenter = 72.0f, tenseV = 0.4f;
   juce::String names;
 
-  static int pickIdx(juce::Random& rng, float dk, float tn, float sigma = 0.28f) {
+  static int pickIdx(juce::Random& rng, float dk, float tn, float sigma = 0.25f) {
     const size_t n = BANK.size();
     std::vector<double> w(n); double sum = 0;
     for (size_t i = 0; i < n; ++i) {
       const double dx = BANK[i].dk - dk, dy = BANK[i].tn - tn;
-      w[i] = std::exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma)) + 0.01;
+      w[i] = std::exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma)) + 0.005;
       sum += w[i];
     }
     double r = rng.nextDouble() * sum;
@@ -135,49 +131,19 @@ struct ChordGen {
 
   void apply(juce::Random& rng, int key, float tense) {
     tenseV = tense;
+    int effectiveKey = (key == 12) ? rng.nextInt(12) : key;
+
     int t[4];
     for (int i = 0; i < 4; ++i) {
       t[i] = base.c[i].t; const float r = rng.nextFloat();
-      if (t[i] == D7B9 && r < 0.5f * (1.0f - tense)) t[i] = D9;
-      else if (t[i] == MAJ7S11 && r < 0.4f * (1.0f - tense)) t[i] = MAJ9;
+      if (t[i] == D7B9 && r < 0.4f * (1.0f - tense)) t[i] = D9;
+      else if (t[i] == MAJ7S11 && r < 0.3f * (1.0f - tense)) t[i] = MAJ9;
       else if (t[i] == M11 && r < 0.3f * (1.0f - tense)) t[i] = M9;
-      else if ((t[i] == M7 || t[i] == MAJ7) && r < 0.4f) t[i] = (t[i] == M7 ? M9 : MAJ9);
     }
-    auto isSurp = [](int x) { return x == MAJ7S11 || x == MMAJ7; };
-    int cnt = 0, keep = -1;
-    for (int i = 0; i < 4; ++i)
-      if (isSurp(t[i])) { ++cnt; if (keep < 0 || std::abs(i - 2) <= std::abs(keep - 2)) keep = i; }
-    if (cnt > 1) {
-      for (int i = 0; i < 4; ++i)
-        if (i != keep && isSurp(t[i])) t[i] = (t[i] == MMAJ7 ? M9 : MAJ9);
-    } else if (cnt == 0 && rng.nextFloat() < 0.6f + 0.4f * tense) {
-      const int k = rng.nextFloat() < 0.7f ? 2 : 1;
-      const int x = t[k];
-      if (x == MAJ9 || x == MAJ7 || x == ADD9 || x == SIX9) t[k] = MAJ7S11;
-      else if ((x == M9 || x == M7 || x == M11) && base.c[k].r == 0) t[k] = MMAJ7;
-      else if (x == M9 || x == M7) t[k] = M11;
-      else if (x == D9) t[k] = D13;
-    }
-
-    if (key == 12) {
-      int startR = rng.nextInt(12);
-      int wanderingRoots[4] = {
-        startR,
-        (startR + 5) % 12,
-        (startR + 8) % 12,
-        (startR + 7) % 12
-      };
-      for (int i = 0; i < 4; ++i) {
-        root[i] = wanderingRoots[i];
-        bass[i] = wanderingRoots[i];
-        type[i] = t[i];
-      }
-    } else {
-      for (int i = 0; i < 4; ++i) {
-        root[i] = (base.c[i].r + key) % 12;
-        bass[i] = ((base.c[i].b < 0 ? base.c[i].r : base.c[i].b) + key) % 12;
-        type[i] = t[i];
-      }
+    for (int i = 0; i < 4; ++i) {
+      root[i] = (base.c[i].r + effectiveKey) % 12;
+      bass[i] = ((base.c[i].b < 0 ? base.c[i].r : base.c[i].b) + effectiveKey) % 12;
+      type[i] = t[i];
     }
   }
 
@@ -191,10 +157,10 @@ struct ChordGen {
         if (iv[k] % 12 == 1) continue;
         pcs.push_back((root[i] + iv[k]) % 12);
       }
-      for (int m = (int) topCenter - 5; m <= (int) topCenter + 4; ++m)
+      for (int m = (int) topCenter - 4; m <= (int) topCenter + 4; ++m)
         for (int pc : pcs) if (m % 12 == pc) cands[i].push_back(m);
       if (cands[i].empty())
-        for (int m = 62; m <= 78; ++m) for (int pc : pcs) if (m % 12 == pc) cands[i].push_back(m);
+        for (int m = 64; m <= 76; ++m) for (int pc : pcs) if (m % 12 == pc) cands[i].push_back(m);
       if (cands[i].empty()) cands[i].push_back(72);
     }
     double bestS = 1e18; int bv[4] = {72, 72, 72, 72};
@@ -207,11 +173,9 @@ struct ChordGen {
       for (int i = 0; i < 4; ++i) { if (v[i] == mx) { ++cntMax; argmax = i; } else second = std::max(second, v[i]); }
       for (int i = 0; i < 4; ++i) {
         const int leap = std::abs(v[i] - v[(i + 1) % 4]);
-        s += leap * 1.5; if (leap > 4) s += (leap - 4) * 3;
+        s += leap * 1.2; if (leap > 3) s += (leap - 3) * 2.5;
       }
-      if (a == b && b == c && c == d) s += 10;
-      if (cntMax == 1) { s -= 3; if (argmax == 2) s -= 3; else if (argmax == 1) s -= 1; if (mx - second >= 2) s -= 2; }
-      s += std::abs(mean - topCenter) * 0.4;
+      s += std::abs(mean - topCenter) * 0.3;
       if (s < bestS) { bestS = s; for (int i = 0; i < 4; ++i) bv[i] = v[i]; }
     }
     for (int i = 0; i < 4; ++i) topLine[i] = bv[i];
@@ -225,15 +189,6 @@ struct ChordGen {
       if (a.size() < 2 || b.size() < 2) return 1e9;
       const int bl = std::abs(a[0] - b[0]); if (bl > 5) q += (bl - 5) * 3;
       const int tl = std::abs(a.back() - b.back()); if (tl > 4) q += (tl - 4) * 2;
-      const int j = (i + 1) % 4;
-      if (root[i] == root[j] && bass[i] == bass[j]) q += 15;
-      std::vector<int> pa, pb;
-      for (size_t k = 1; k < a.size(); ++k) pa.push_back(a[k] % 12);
-      for (size_t k = 1; k < b.size(); ++k) pb.push_back(b[k] % 12);
-      std::sort(pa.begin(), pa.end()); std::sort(pb.begin(), pb.end());
-      if (pa == pb) q += 15;
-      for (size_t k = 0; k + 1 < a.size(); ++k) { const int gap = a[k + 1] - a[k]; if (gap < 3 && a[k] < 66) q += 10; }
-      if (a.back() > 79 || a.back() < 64) q += 5;
       q += 3.0 * std::abs(tensOf(type[i]) - ideal[i] * (0.4 + 0.6 * (double) tenseV));
     }
     return q;
@@ -242,7 +197,7 @@ struct ChordGen {
   void generate(juce::Random& rng, int key, float dark, float tense, bool open, double bpm = 120.0, bool differ = false) {
     const int avoid = differ ? baseIdx : -1;
     ChordGen best; double bq = 1e18;
-    for (int a = 0; a < 24; ++a) {
+    for (int a = 0; a < 30; ++a) {
       ChordGen t;
       t.baseIdx = pickIdx(rng, dark, tense); t.base = BANK[(size_t) t.baseIdx];
       t.topCenter = 74.0f - 4.0f * dark;
@@ -258,13 +213,12 @@ struct ChordGen {
     ChordGen best; double bq = 1e18; bool found = false;
     for (int a = 0; a < 12; ++a) {
       Prog np = base; bool changed = false;
-      const int changes = rng.nextFloat() < 0.4f ? 2 : 1;
+      const int changes = 1;
       for (int m = 0; m < changes; ++m) {
         const int k = 1 + rng.nextInt(3);
         const Prog& q = BANK[(size_t) pickIdx(rng, base.dk, base.tn, 0.2f)];
         const Ch nc = q.c[k]; const Ch old = np.c[k];
         if (nc.r == old.r && nc.t == old.t && nc.b == old.b) continue;
-        if (nc.r == np.c[k - 1].r || nc.r == np.c[(k + 1) % 4].r) continue;
         np.c[k] = nc; changed = true;
       }
       if (!changed) continue;
@@ -294,18 +248,18 @@ struct ChordGen {
       if (k == cand.size()) {
         auto s = cur; std::sort(s.begin(), s.end());
         double mean = 0; for (int v : s) mean += v; mean /= (double) s.size();
-        double cost = rng.nextFloat() * 0.8;
-        if (s.back() - s.front() > 15) cost += 100;
-        if (top >= 0 && s.back() != top) cost += 500;
+        double cost = rng.nextFloat() * 0.5;
+        if (s.back() - s.front() > 14) cost += 100;
+        if (top >= 0 && s.back() != top) cost += 400;
         for (size_t i = 0; i + 1 < s.size(); ++i) {
           const int gap = s[i + 1] - s[i];
-          if (gap < 3 && s[i] < 66) cost += 30; else if (gap == 1) cost += 3;
+          if (gap < 3 && s[i] < 66) cost += 25; else if (gap == 1) cost += 2;
         }
         if (!prev.empty()) {
           double pm = 0; for (int v : prev) pm += v; pm /= (double) prev.size();
           for (int v : s) { int d = 99; for (int q : prev) d = std::min(d, std::abs(v - q)); cost += d; }
-          cost += std::abs(mean - pm) * 0.7;
-        } else cost += std::abs(mean - 68) * 2;
+          cost += std::abs(mean - pm) * 0.5;
+        } else cost += std::abs(mean - 68) * 1.5;
         if (cost < bestCost) { bestCost = cost; best = s; }
         return;
       }

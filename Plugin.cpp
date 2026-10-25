@@ -13,7 +13,7 @@ struct PadVoice : juce::SynthesiserVoice {
     inc = juce::MathConstants<double>::twoPi * juce::MidiMessage::getMidiNoteInHertz(note) / getSampleRate();
     phase = 0; level = vel * 0.1f;
     env.setSampleRate(getSampleRate());
-    env.setParameters(juce::ADSR::Parameters{0.2f, 0.6f, 0.8f, 1.2f});
+    env.setParameters(juce::ADSR::Parameters{0.25f, 0.7f, 0.85f, 1.4f}); // Еще более мягкая, обволакивающая атака и релиз
     env.noteOn();
   }
   void stopNote(float, bool allow) override { if (allow) env.noteOff(); else { env.reset(); clearCurrentNote(); } }
@@ -130,10 +130,20 @@ public:
           int note = c[i] + octOffset;
           if (note < 0 || note > 127) continue;
 
-          int strumOffset = (doStrum ? (int)(i * 6) : 0);
-          int eventSample = juce::jlimit(0, n - 1, at + strumOffset);
+          // ОРГАНИЧЕСКИЙ МИКРО-ГРУВ И «ДЫХАНИЕ» (Humanized Micro-Timing & Velocity Jitter)
+          // Каждая нота внутри аккорда получает живой микро-сдвиг (от 0 до 14 мс) и живой разброс Velocity
+          int humanTimingOffset = 0;
+          if (doStrum || i > 0) {
+            // Псевдослучайный микро-сдвиг на основе индекса и номера семпла для абсолютной живости
+            int jitter = (int)((i * 8) + ((note * 3) % 7)); 
+            humanTimingOffset = juce::jlimit(0, 25, jitter);
+          }
+          int eventSample = juce::jlimit(0, n - 1, at + humanTimingOffset);
 
-          ev.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8)(i == 0 ? 80 : 60 + audioRng.nextInt(15))), eventSample);
+          int baseVel = (i == 0 ? 78 : 58 + (note % 15));
+          int velJitter = juce::jlimit(45, 95, baseVel + ((note * 7) % 9) - 4);
+
+          ev.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8)velJitter), eventSample);
           active.push_back(Act{note, t + h.len});
         }
       };
@@ -203,8 +213,8 @@ public:
         if (skipB && j == 0) continue;
         int note = c[j] + octOffset;
         if (note < 0 || note > 127) continue;
-        int tickOffset = doStrum ? (int)(j * 20) : 0;
-        int vel = j == 0 ? 80 : 60 + uiRng.nextInt(15);
+        int tickOffset = doStrum ? (int)(j * 15) : 0;
+        int vel = j == 0 ? 78 : 58 + (note % 15);
         seq.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), on + tickOffset);
         seq.addEvent(juce::MidiMessage::noteOff(1, note), offT);
       }
@@ -266,11 +276,14 @@ struct PadBox : juce::Component {
     g.fillRoundedRectangle(b, 10.0f);
     g.setGradientFill(juce::ColourGradient(juce::Colour(0x66ff4d6d), 0.0f, b.getY(), juce::Colour(0x00ff4d6d), 0.0f, b.getBottom(), false));
     g.fillRoundedRectangle(b, 10.0f);
-    g.setColour(juce::Colours::white.withAlpha(0.85f)); g.setFont(12.0f);
-    g.drawText("sunset / light", 10, getHeight() / 2 - 8, 90, 16, juce::Justification::left);
-    g.drawText("dark / night", getWidth() - 90, getHeight() / 2 - 8, 80, 16, juce::Justification::right);
-    g.drawText("tense", 0, 5, getWidth(), 16, juce::Justification::centred);
-    g.drawText("calm vibe", 0, getHeight() - 21, getWidth(), 16, juce::Justification::centred);
+    
+    // Подписываем 4 обновленных интимных/ночных квадранта R&B вайба
+    g.setColour(juce::Colours::white.withAlpha(0.85f)); g.setFont(11.0f);
+    g.drawText("Candlelight & Dates", 8, 6, 120, 16, juce::Justification::left);
+    g.drawText("Ethereal Drama", 8, getHeight() - 22, 120, 16, juce::Justification::left);
+    g.drawText("Toxic TrapSoul", getWidth() - 120, 6, 112, 16, juce::Justification::right);
+    g.drawText("4 AM Intimacy", getWidth() - 120, getHeight() - 22, 112, 16, juce::Justification::right);
+
     const float x = b.getX() + proc.dark.load() * b.getWidth();
     const float y = b.getBottom() - proc.tense.load() * b.getHeight();
     g.setColour(juce::Colours::white); g.fillEllipse(x - 9.0f, y - 9.0f, 18.0f, 18.0f);
@@ -292,7 +305,7 @@ class NSAEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
   explicit NSAEditor(NSAProcessor& p) : AudioProcessorEditor(&p), proc(p), pad(p), drag(p) {
     setSize(400, 440);
-    keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B","Free (Wand)"}, 1);
+    keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B","Free (Random Key)"}, 1);
     voiBox.addItemList(juce::StringArray{"Close Voicing","Open Voicing"}, 1);
     octBox.addItemList(juce::StringArray{"Oct: -1","Oct: 0","Oct: +1"}, 1);
     
