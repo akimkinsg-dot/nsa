@@ -160,13 +160,12 @@ struct ChordGen {
     }
 
     if (key == 12) {
-      // Свободный режим (Free / Wandering): гармоничная смена центров (Neo-Soul / Jazz modulation path)
       int startR = rng.nextInt(12);
       int wanderingRoots[4] = {
         startR,
-        (startR + 5) % 12, // Subdominant shift
-        (startR + 8) % 12, // Chromatic mediant / Neo-soul shift
-        (startR + 7) % 12  // Resolution / Dominant
+        (startR + 5) % 12,
+        (startR + 8) % 12,
+        (startR + 7) % 12
       };
       for (int i = 0; i < 4; ++i) {
         root[i] = wanderingRoots[i];

@@ -175,12 +175,12 @@ public:
     state.evolve(uiRng, key, tense, open != 0, getCurrentBpm()); ++version;
   }
   void setKey(int nk) {
-    const int d = (nk == 12 || key == 12) ? 0 : (((nk - lastKey) % 12) + 12) % 12;
-    lastKey = nk; key = nk;
-    juce::SpinLock::ScopedLockType l(lock);
+    lastKey = key; key = nk;
     if (nk == 12) {
-      generate(true); // Free mode generates a fresh wandering key journey
+      generate(true);
     } else {
+      const int d = (((nk - lastKey) % 12) + 12) % 12;
+      juce::SpinLock::ScopedLockType l(lock);
       state.transpose(d, open != 0, uiRng); ++version;
     }
   }
