@@ -68,7 +68,47 @@ inline const std::vector<Prog> BANK = {
   mkP(mk(0,MMAJ7), mk(5,M9), mk(2,M7B5), mk(7,D7B9),            0.85f, 0.85f),
   mkP(mk(2,M7B5), mk(7,D7B9), mk(0,M11), mk(9,M9),              0.80f, 0.80f),
   mkP(mk(9,M11), mk(5,MAJ7S11), mk(2,M9), mk(7,D7B9),           0.75f, 0.75f),
-  mkP(mk(0,M9), mk(8,MAJ9), mk(3,MAJ9), mk(7,D7B9),             0.80f, 0.70f)
+  mkP(mk(0,M9), mk(8,MAJ9), mk(3,MAJ9), mk(7,D7B9),             0.80f, 0.70f),
+
+  // ===== РАСШИРЕНИЕ: Candlelight & Dates (90s soul, Kaleem Taylor, Nobu Woods) =====
+  mkP(mk(0,MAJ9), mk(4,M7), mk(9,M9), mk(2,D9),                  0.15f, 0.20f),
+  mkP(mk(5,MAJ9), mk(0,MAJ9,4), mk(2,M9), mk(7,SUS9),            0.15f, 0.15f),
+  mkP(mk(4,M9), mk(9,M9), mk(2,M9), mk(7,SUS9),                  0.25f, 0.15f),
+  mkP(mk(0,MAJ9), mk(5,MAJ9,0), mk(4,M9), mk(2,M9),              0.15f, 0.10f),
+  mkP(mk(0,MAJ9), mk(10,D9), mk(5,MAJ9), mk(0,SIX9),             0.30f, 0.30f),
+  mkP(mk(9,M9), mk(2,M9), mk(7,SUS9), mk(0,MAJ9),                0.30f, 0.15f),
+  mkP(mk(0,MAJ9), mk(6,M7B5), mk(5,MAJ9), mk(4,M9),              0.20f, 0.30f),
+  mkP(mk(0,SIX9), mk(9,M7), mk(2,M9), mk(7,D13),                 0.20f, 0.25f),
+
+  // ===== РАСШИРЕНИЕ: 4 AM Intimacy (PARTYNEXTDOOR, Drake, The Code) =====
+  mkP(mk(0,M9), mk(8,MAJ9), mk(3,MAJ9), mk(10,SUS9),             0.70f, 0.30f),
+  mkP(mk(0,M11), mk(5,M9), mk(8,MAJ7S11), mk(3,MAJ9),            0.75f, 0.40f),
+  mkP(mk(8,MAJ9), mk(7,D9), mk(0,M9), mk(5,M11),                 0.70f, 0.40f),
+  mkP(mk(0,M9), mk(3,MAJ9), mk(10,D9), mk(8,MAJ9),               0.65f, 0.35f),
+  mkP(mk(5,M9), mk(3,MAJ9), mk(8,MAJ9), mk(7,SUS9),              0.75f, 0.35f),
+  mkP(mk(0,M11), mk(0,M9,10), mk(8,MAJ9), mk(5,M9),              0.80f, 0.40f),
+  mkP(mk(8,MAJ9), mk(5,M9), mk(10,D9), mk(3,MAJ9),               0.60f, 0.30f),
+  mkP(mk(0,M9), mk(5,M9), mk(8,MAJ7S11), mk(7,D9),               0.80f, 0.45f),
+
+  // ===== РАСШИРЕНИЕ: Ethereal Drama (Kaleem Taylor, Nobu Woods, Che Ecru) =====
+  mkP(mk(0,MAJ9), mk(10,MAJ7S11), mk(5,MAJ9), mk(9,M9),          0.30f, 0.55f),
+  mkP(mk(5,MAJ7S11), mk(10,MAJ7S11), mk(0,MAJ9), mk(9,M9),       0.30f, 0.60f),
+  mkP(mk(0,MAJ9), mk(4,D7B9), mk(9,M11), mk(5,MAJ7S11),          0.30f, 0.65f),
+  mkP(mk(2,M9), mk(8,MAJ7S11), mk(0,MAJ9), mk(5,MAJ7S11),        0.30f, 0.60f),
+  mkP(mk(0,SIX9), mk(3,MAJ7S11), mk(5,MAJ9), mk(7,D13),          0.35f, 0.60f),
+  mkP(mk(9,M11), mk(5,MAJ7S11), mk(0,MAJ9), mk(7,D13),           0.35f, 0.55f),
+  mkP(mk(0,MAJ7S11), mk(6,M7B5), mk(5,MAJ9), mk(4,M9),           0.30f, 0.65f),
+  mkP(mk(0,MAJ9), mk(2,D13), mk(5,MAJ7S11), mk(7,SUS9),          0.25f, 0.65f),
+
+  // ===== РАСШИРЕНИЕ: Toxic TrapSoul (PARTYNEXTDOOR, Drake, Artie J) =====
+  mkP(mk(0,M9), mk(1,MAJ7S11), mk(8,MAJ9), mk(7,D7B9),           0.90f, 0.80f),
+  mkP(mk(0,MMAJ7), mk(5,M11), mk(1,MAJ9), mk(7,D7B9),            0.95f, 0.85f),
+  mkP(mk(0,M11), mk(10,D13), mk(8,MAJ7S11), mk(7,D7B9),          0.85f, 0.80f),
+  mkP(mk(8,MAJ7S11), mk(7,D7B9), mk(0,MMAJ7), mk(5,M9),          0.90f, 0.80f),
+  mkP(mk(0,M9), mk(3,MAJ7S11), mk(2,M7B5), mk(7,D7B9),           0.85f, 0.75f),
+  mkP(mk(5,M11), mk(1,D9), mk(0,MMAJ7), mk(8,MAJ9),              0.85f, 0.85f),
+  mkP(mk(0,MMAJ7), mk(0,M9,10), mk(8,MAJ7S11), mk(2,M7B5),       0.95f, 0.80f),
+  mkP(mk(1,MAJ9), mk(0,M11), mk(8,MAJ7S11), mk(7,D13),           0.80f, 0.70f)
 };
 
 struct Hit { double start, len; int chord; };
