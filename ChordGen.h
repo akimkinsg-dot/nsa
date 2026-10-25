@@ -111,7 +111,35 @@ inline const std::vector<Prog> BANK = {
   mkP(mk(1,MAJ9), mk(0,M11), mk(8,MAJ7S11), mk(7,D13),           0.80f, 0.70f)
 };
 
-struct Hit { double start, len; int chord; };
+// Hit: обычный удар аккорда; sus>=0 — «слеза» (верхний голос сначала подвешен, потом опускается);
+// topOnly — догоняющий верхний голос (разрешение «слезы»), остальные ноты не переигрываются
+struct Hit { double start = 0, len = 0; int chord = 0; int sus = -1; double susLen = 0; bool topOnly = false; };
+
+// ЧУВСТВО: набор «красок» сцены
+enum { RES_HOME, RES_HANG, RES_TWIST };
+struct Feel {
+  float nost = 0.0f;   // горько-сладкий заимствованный аккорд (iv / bVI / дорийская IV)
+  int   res  = RES_HOME; // как заканчивается круг: домой / повисает на sus / обманный каданс
+  float air  = 0.0f;   // воздух в ритме: аккорд приходит чуть раньше + вдох в конце круга
+  float tear = 0.0f;   // «слеза»: задержание в верхнем голосе
+  float human = 0.5f;  // живость исполнения: микро-тайминг, динамика, дыхание
+};
+struct Scene { const char* name; float dk, tn; Feel f; bool strum; };
+
+// 8 сцен-воспоминаний, по две на квадрант. У каждой свой набор красок.
+inline const Scene SCENES[8] = {
+  {"Last Summer Night",       0.20f, 0.20f, {0.65f, RES_HOME,  0.30f, 0.55f, 0.60f}, true },
+  {"First Slow Dance",        0.15f, 0.10f, {0.10f, RES_HOME,  0.10f, 0.20f, 0.70f}, true },
+  {"Empty Flat After Guests", 0.75f, 0.35f, {0.50f, RES_HANG,  0.60f, 0.60f, 0.80f}, true },
+  {"Unsent Text",             0.80f, 0.45f, {0.35f, RES_HANG,  0.50f, 0.80f, 0.70f}, false},
+  {"Taxi in the Rain",        0.30f, 0.60f, {0.40f, RES_HANG,  0.50f, 0.70f, 0.60f}, true },
+  {"Weightless",              0.25f, 0.65f, {0.15f, RES_HANG,  0.40f, 0.40f, 0.50f}, true },
+  {"Jealous at 3AM",          0.90f, 0.80f, {0.20f, RES_TWIST, 0.30f, 0.80f, 0.40f}, false},
+  {"Cant Let Go",             0.85f, 0.85f, {0.50f, RES_TWIST, 0.50f, 0.60f, 0.50f}, false}
+};
+
+inline bool isMinorType(int ty) { return ty == M7 || ty == M9 || ty == M11 || ty == MMAJ7 || ty == M7B5; }
+inline bool isDomType(int ty) { return ty == D9 || ty == D13 || ty == D7B9; }
 struct PadPattern { int n; double s[4], l[4]; int cMap[4]; };
 
 inline const PadPattern PATTERNS_SLOW[3] = {
@@ -141,6 +169,8 @@ struct ChordGen {
   int topLine[4] = {72,72,72,72};
   float topCenter = 72.0f, tenseV = 0.4f;
   juce::String names;
+  Feel feel;
+  bool tearAt[4] = {false, false, false, false};
 
   static int pickIdx(juce::Random& rng, float dk, float tn, float sigma = 0.25f) {
     const size_t n = BANK.size();
@@ -161,28 +191,93 @@ struct ChordGen {
     if (bpm < 85.0) selectedPool = PATTERNS_SLOW;
     else if (bpm > 115.0) selectedPool = PATTERNS_FAST;
 
-    int pi = rng.nextInt(3);
-    const PadPattern& p = selectedPool[pi];
-    for (int k = 0; k < p.n; ++k) {
-      int chordIndex = p.cMap[k] % 4;
-      hits.push_back(Hit{ p.s[k], p.l[k], chordIndex });
+    const PadPattern& p = selectedPool[rng.nextInt(3)];
+    for (int k = 0; k < p.n; ++k) hits.push_back(Hit{ p.s[k], p.l[k], p.cMap[k] % 4 });
+
+    // броски всегда в одном порядке, чтобы слайдеры не перетасовывали прогрессию
+    const float ra = rng.nextFloat(), rb = rng.nextFloat(), t1 = rng.nextFloat(), t2 = rng.nextFloat();
+    const int ka = 1 + rng.nextInt((int) hits.size() - 1);
+
+    // ВОЗДУХ: аккорд приходит на полдоли раньше такта (анти­ципация)
+    if (ra < feel.air && hits[(size_t) ka - 1].len >= 3.0) {
+      hits[(size_t) ka].start -= 0.5; hits[(size_t) ka].len += 0.5; hits[(size_t) ka - 1].len -= 0.5;
     }
+    // ВОЗДУХ: вдох перед новым кругом
+    if (rb < feel.air * 0.6f && hits.back().len >= 4.0) hits.back().len -= 1.0;
+
+    // СЛЕЗА: где подвесить верхний голос (кульминация и приход домой)
+    for (bool& b : tearAt) b = false;
+    tearAt[2] = t1 < feel.tear;
+    tearAt[0] = t2 < feel.tear * 0.5f;
+    tearify();
+  }
+
+  // Строит «слёзы» детерминированно по tearAt и текущим голосам
+  void tearify() {
+    hits.erase(std::remove_if(hits.begin(), hits.end(), [](const Hit& h) { return h.topOnly; }), hits.end());
+    std::vector<Hit> extra;
+    for (auto& h : hits) {
+      h.sus = -1; h.susLen = 0;
+      if (h.chord < 0 || h.chord > 3 || !tearAt[h.chord] || h.len < 4.0) continue;
+      const auto& v = voiced[h.chord];
+      if (v.size() < 4) continue;
+      const int top = v.back();
+      int sus = -1;
+      for (int add : {2, 1}) {
+        const int cand = top + add; bool ok = cand <= 90;
+        for (size_t i = 0; i + 1 < v.size(); ++i) {
+          if (v[i] % 12 == cand % 12) ok = false;            // не удвоение аккордового тона
+          if (i > 0 && std::abs(v[i] - cand) == 1) ok = false; // не злое трение с внутренними голосами
+        }
+        if (ok) { sus = cand; break; }
+      }
+      if (sus < 0) continue;
+      h.sus = sus; h.susLen = h.len >= 8.0 ? 2.0 : 1.0;
+      Hit e; e.start = h.start + h.susLen; e.len = h.len - h.susLen; e.chord = h.chord; e.topOnly = true;
+      extra.push_back(e);
+    }
+    for (auto& e : extra) hits.push_back(e);
+    std::stable_sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.start < b.start; });
   }
 
   void apply(juce::Random& rng, int key, float tense) {
     tenseV = tense;
-    int effectiveKey = (key == 12) ? rng.nextInt(12) : key;
+    const int effectiveKey = (key == 12) ? rng.nextInt(12) : key;
 
-    int t[4];
+    int r[4], t[4], b[4];
     for (int i = 0; i < 4; ++i) {
-      t[i] = base.c[i].t; const float r = rng.nextFloat();
-      if (t[i] == D7B9 && r < 0.4f * (1.0f - tense)) t[i] = D9;
-      else if (t[i] == MAJ7S11 && r < 0.3f * (1.0f - tense)) t[i] = MAJ9;
-      else if (t[i] == M11 && r < 0.3f * (1.0f - tense)) t[i] = M9;
+      r[i] = base.c[i].r; b[i] = base.c[i].b; t[i] = base.c[i].t;
+      const float x = rng.nextFloat();
+      if (t[i] == D7B9 && x < 0.4f * (1.0f - tense)) t[i] = D9;
+      else if (t[i] == MAJ7S11 && x < 0.3f * (1.0f - tense)) t[i] = MAJ9;
+      else if (t[i] == M11 && x < 0.3f * (1.0f - tense)) t[i] = M9;
     }
+    bool minorKey = false;
+    for (int i = 0; i < 4; ++i) if (r[i] == 0) { minorKey = isMinorType(t[i]); break; }
+    const float rn = rng.nextFloat(), rp = rng.nextFloat(), rq = rng.nextFloat();
+
+    // НОСТАЛЬГИЯ: заимствованный аккорд. В мажоре iv-минор или bVI, в миноре дорийская IV (F9 в Cm)
+    const int k = (r[2] != 7 && r[2] != 0) ? 2 : ((r[1] != 7 && r[1] != 0) ? 1 : -1);
+    if (k > 0 && rn < feel.nost) {
+      b[k] = -1;
+      if (minorKey) { r[k] = 5; t[k] = D9; }
+      else if (rp < 0.7f) { r[k] = 5; t[k] = M9; }
+      else { r[k] = 8; t[k] = MAJ9; }
+    }
+
+    // КОНЦОВКА КРУГА: домой / повиснуть / обмануть
+    if (feel.res == RES_HANG) {
+      if (r[3] == 7 || isDomType(t[3])) t[3] = SUS9;
+    } else if (feel.res == RES_HOME) {
+      if (t[3] == SUS9) t[3] = tense > 0.6f ? D7B9 : D9;
+    } else if (rq < 0.85f) {
+      r[2] = 7; b[2] = -1; t[2] = tense > 0.6f ? D7B9 : D9;
+      r[3] = minorKey ? 8 : 9; b[3] = -1; t[3] = minorKey ? MAJ9 : M9;
+    }
+
     for (int i = 0; i < 4; ++i) {
-      root[i] = (base.c[i].r + effectiveKey) % 12;
-      bass[i] = ((base.c[i].b < 0 ? base.c[i].r : base.c[i].b) + effectiveKey) % 12;
+      root[i] = (r[i] + effectiveKey) % 12;
+      bass[i] = ((b[i] < 0 ? r[i] : b[i]) + effectiveKey) % 12;
       type[i] = t[i];
     }
   }
@@ -207,15 +302,20 @@ struct ChordGen {
     for (int a : cands[0]) for (int b : cands[1]) for (int c : cands[2]) for (int d : cands[3]) {
       const int v[4] = {a, b, c, d};
       double s = rng.nextFloat();
-      int mx = v[0], cntMax = 0, argmax = 0, second = -999; double mean = 0;
-      for (int i = 0; i < 4; ++i) { mx = std::max(mx, v[i]); mean += v[i]; }
-      mean /= 4.0;
-      for (int i = 0; i < 4; ++i) { if (v[i] == mx) { ++cntMax; argmax = i; } else second = std::max(second, v[i]); }
+      // певучесть: шаги по 1-2 полутона лучше всего, повтор ноты — мотив, скачки дороги
       for (int i = 0; i < 4; ++i) {
         const int leap = std::abs(v[i] - v[(i + 1) % 4]);
-        s += leap * 1.2; if (leap > 3) s += (leap - 3) * 2.5;
+        if (leap == 0) s += 0.8;
+        else if (leap <= 2) s += 0.4;
+        else if (leap <= 4) s += 2.0 + (leap - 2) * 0.5;
+        else s += 4.0 + (leap - 4) * 2.5;
       }
-      s += std::abs(mean - topCenter) * 0.3;
+      const int mx = std::max(std::max(v[0], v[1]), std::max(v[2], v[3]));
+      if (v[2] == mx && v[0] < mx && v[1] < mx && v[3] < mx) s -= 3.0; // единственная кульминация на 3-м аккорде
+      else if (v[3] == mx) s += 2.0;
+      if (v[3] < v[2]) s -= 1.0;   // спуск к разрешению
+      if (v[0] == v[2]) s -= 1.5;  // повтор ноты-хука
+      s += std::abs((a + b + c + d) / 4.0 - topCenter) * 0.3;
       if (s < bestS) { bestS = s; for (int i = 0; i < 4; ++i) bv[i] = v[i]; }
     }
     for (int i = 0; i < 4; ++i) topLine[i] = bv[i];
@@ -238,7 +338,7 @@ struct ChordGen {
     const int avoid = differ ? baseIdx : -1;
     ChordGen best; double bq = 1e18;
     for (int a = 0; a < 30; ++a) {
-      ChordGen t;
+      ChordGen t; t.feel = feel;
       t.baseIdx = pickIdx(rng, dark, tense); t.base = BANK[(size_t) t.baseIdx];
       t.topCenter = 74.0f - 4.0f * dark;
       t.apply(rng, key, tense); t.revoice(open, rng, true); t.makeRhythm(rng, bpm);
@@ -333,5 +433,6 @@ struct ChordGen {
       nm.add(n);
     }
     names = nm.joinIntoString("   |   ");
+    tearify();
   }
 };
