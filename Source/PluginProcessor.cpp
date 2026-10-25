@@ -1,200 +1,165 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-VibeSparkProcessor::VibeSparkProcessor() 
-    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts(*this, nullptr, "VIBESPARK_STATE", {}) {
-  synth.addSound(new PadSound());
-  for (int i = 0; i < 16; ++i) synth.addVoice(new PadVoice());
-  generate();
+//==============================================================================
+VibeSparkProcessor::VibeSparkProcessor()
+#ifndef JucePlugin_PreferredChannelConfigurations
+     : AudioProcessor (BusesProperties()
+                     #if ! JucePlugin_IsMidiEffect
+                      #if ! JucePlugin_IsSynth
+                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+                      #endif
+                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                     #endif
+                       )
+#endif
+{
 }
 
-void VibeSparkProcessor::prepareToPlay(double sr, int) {
-  sampleRate = sr; synth.setCurrentPlaybackSampleRate(sr); active.reserve(64); pending.reserve(64);
+VibeSparkProcessor::~VibeSparkProcessor()
+{
 }
 
-void VibeSparkProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
-  juce::ScopedNoDenormals nd;
-  buffer.clear(); midi.clear();
-  const int n = buffer.getNumSamples();
-  bool pPlaying = false, havePpq = false; double ppq = 0, bpm = 120.0;
-  
-  if (auto* ph = getPlayHead())
-    if (auto pos = ph->getPosition()) {
-      pPlaying = pos->getIsPlaying();
-      if (auto p = pos->getPpqPosition()) { ppq = *p; havePpq = true; }
-      if (auto b = pos->getBpm()) bpm = *b;
-    }
-  if (bpm < 20.0) bpm = 120.0;
-  hostBpm.store(bpm);
-  hostPlaying.store(pPlaying);
-
-  bool run = false;
-  if (pPlaying && havePpq) run = true;
-
-  if (version.load() != snapVersion) {
-    juce::SpinLock::ScopedTryLockType tl(lock);
-    if (tl.isLocked()) { snap = state; snapVersion = version.load(); }
-  }
-
-  juce::MidiBuffer ev;
-  if (run) {
-    const double pps = bpm / 60.0 / sampleRate;
-    const double p0 = ppq, p1 = p0 + (double) n * pps;
-    auto off = [&](double t) { return juce::jlimit(0, n - 1, (int) std::floor((t - p0) / pps)); };
-    auto release = [&](double upTo) {
-      for (size_t i = 0; i < active.size();) {
-        if (active[i].end <= upTo) {
-          ev.addEvent(juce::MidiMessage::noteOff(1, active[i].note), off(active[i].end));
-          active.erase(active.begin() + (long) i);
-        } else ++i;
-      }
-    };
-    auto cutAll = [&](int at) {
-      for (auto& a : active) ev.addEvent(juce::MidiMessage::noteOff(1, a.note), at);
-      active.clear(); pending.clear();
-    };
-    auto play = [&](const Hit& h, double t, int at) {
-      if (h.chord < 0 || h.chord > 3) return;
-      if (!h.topOnly) cutAll(at);
-      const auto& c = snap.voiced[h.chord];
-      const int sz = (int) c.size();
-      if (sz < 2) return;
-      const int octOffset = octaveShift.load() * 12;
-      const bool skipB = noBass.load();
-      const bool doStrum = strum.load();
-      const double msToPpq = bpm / 60000.0;
-
-      for (int i = 0; i < sz; ++i) {
-        const bool isTop = (i == sz - 1);
-        if (skipB && i == 0) continue;
-        if (h.topOnly && !isTop) continue;
-        int note = c[(size_t) i];
-        double endT = t + h.len;
-        if (isTop && h.sus >= 0) { note = h.sus; endT = t + h.susLen; }
-        note += octOffset;
-        if (note < 0 || note > 127) continue;
-
-        double ms = (doStrum ? 22.0 * i : 0.0);
-        int vel = 80;
-
-        active.push_back(Act{note, endT});
-        if (ms < 0.5) ev.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), at);
-        else pending.push_back(Pend{t + ms * msToPpq, note, (juce::uint8) vel});
-      }
-    };
-
-    const bool jump = !wasRunning || std::abs(p0 - expectedPpq) > 0.25;
-    const double base = std::floor(p0 / 16.0) * 16.0;
-    if (jump) {
-      cutAll(0);
-      for (const auto& h : snap.hits) {
-        const double t = base + h.start;
-        if (t < p0 - 1e-9 && t + h.len > p0 + 1e-9) play(h, t, 0);
-      }
-    }
-    const double w0 = jump ? p0 : expectedPpq;
-    for (int cyc = 0; cyc < 2; ++cyc)
-      for (const auto& h : snap.hits) {
-        const double t = base + cyc * 16.0 + h.start;
-        if (t >= w0 && t < p1) { release(t); play(h, t, off(t)); }
-      }
-    for (size_t i = 0; i < pending.size();) {
-      if (pending[i].t < p1) {
-        ev.addEvent(juce::MidiMessage::noteOn(1, pending[i].note, pending[i].vel), off(pending[i].t));
-        pending.erase(pending.begin() + (long) i);
-      } else ++i;
-    }
-    release(p1);
-    expectedPpq = p1; wasRunning = true;
-    
-    // Update UI beat and current bar
-    beatInBar.store((float)std::fmod(ppq, 4.0));
-    int bar = (int)std::fmod(std::floor(ppq / 4.0), 4.0);
-    currentBar.store(bar);
-  } else {
-    if (wasRunning) {
-      cutAll(0);
-      wasRunning = false;
-    }
-    currentBar.store(-1);
-  }
-
-  synth.renderNextBlock(buffer, ev, 0, n);
-  midi.swapWith(ev);
+//==============================================================================
+const juce::String VibeSparkProcessor::getName() const
+{
+    return JucePlugin_Name;
 }
 
-juce::File VibeSparkProcessor::writeMidiFile() {
-  ChordGen copy; { juce::SpinLock::ScopedLockType l(lock); copy = state; }
-  juce::MidiMessageSequence seq;
-  const int octOffset = octaveShift.load() * 12;
-  const bool skipB = noBass.load();
-  const bool doStrum = strum.load();
-
-  for (const auto& h : copy.hits) {
-    if (h.chord < 0 || h.chord > 3) continue;
-    const auto& c = copy.voiced[h.chord];
-    const int sz = (int) c.size();
-    for (int j = 0; j < sz; ++j) {
-      const bool isTop = (j == sz - 1);
-      if (skipB && j == 0) continue;
-      if (h.topOnly && !isTop) continue;
-      int note = c[(size_t) j];
-      double endBeat = h.start + h.len;
-      if (isTop && h.sus >= 0) { note = h.sus; endBeat = h.start + h.susLen; }
-      note += octOffset;
-      if (note < 0 || note > 127) continue;
-      const int tickOffset = (!h.topOnly && doStrum) ? j * 15 : 0;
-      seq.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) 80), h.start * 480.0 + tickOffset);
-      seq.addEvent(juce::MidiMessage::noteOff(1, note), endBeat * 480.0 - 10.0);
-    }
-  }
-  seq.addEvent(juce::MidiMessage::endOfTrack(), 7680.0);
-  seq.updateMatchedPairs();
-  juce::MidiFile mf; mf.setTicksPerQuarterNote(480); mf.addTrack(seq);
-  auto f = juce::File::getSpecialLocation(juce::File::tempDirectory)
-               .getChildFile("VibeSpark_Progression.mid");
-  f.deleteFile();
-  juce::FileOutputStream out(f);
-  if (out.openedOk()) mf.writeTo(out);
-  return f;
+bool VibeSparkProcessor::acceptsMidi() const
+{
+   #if JucePlugin_WantsMidiInput
+    return true;
+   #else
+    return false;
+   #endif
 }
 
-juce::File VibeSparkProcessor::writeSingleMidiFile(int chordIndex) {
-  ChordGen copy; { juce::SpinLock::ScopedLockType l(lock); copy = state; }
-  juce::MidiMessageSequence seq;
-  const int octOffset = octaveShift.load() * 12;
-  const bool skipB = noBass.load();
-  const bool doStrum = strum.load();
-
-  for (const auto& h : copy.hits) {
-    if (h.chord != chordIndex) continue;
-    const auto& c = copy.voiced[h.chord];
-    const int sz = (int) c.size();
-    for (int j = 0; j < sz; ++j) {
-      const bool isTop = (j == sz - 1);
-      if (skipB && j == 0) continue;
-      if (h.topOnly && !isTop) continue;
-      int note = c[(size_t) j];
-      double endBeat = h.len;
-      if (isTop && h.sus >= 0) { note = h.sus; endBeat = h.susLen; }
-      note += octOffset;
-      if (note < 0 || note > 127) continue;
-      const int tickOffset = (!h.topOnly && doStrum) ? j * 15 : 0;
-      seq.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) 80), 0.0 + tickOffset);
-      seq.addEvent(juce::MidiMessage::noteOff(1, note), endBeat * 480.0 - 10.0);
-    }
-  }
-  seq.addEvent(juce::MidiMessage::endOfTrack(), 1920.0);
-  seq.updateMatchedPairs();
-  juce::MidiFile mf; mf.setTicksPerQuarterNote(480); mf.addTrack(seq);
-  auto f = juce::File::getSpecialLocation(juce::File::tempDirectory)
-               .getChildFile("VibeSpark_Chord_" + juce::String(chordIndex + 1) + ".mid");
-  f.deleteFile();
-  juce::FileOutputStream out(f);
-  if (out.openedOk()) mf.writeTo(out);
-  return f;
+bool VibeSparkProcessor::producesMidi() const
+{
+   #if JucePlugin_ProducesMidiOutput
+    return true;
+   #else
+    return false;
+   #endif
 }
 
-juce::AudioProcessorEditor* VibeSparkProcessor::createEditor();
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new VibeSparkProcessor(); }
+bool VibeSparkProcessor::isMidiEffect() const
+{
+   #if JucePlugin_IsMidiEffect
+    return true;
+   #else
+    return false;
+   #endif
+}
+
+double VibeSparkProcessor::getTailLengthSeconds() const
+{
+    return 0.0;
+}
+
+int VibeSparkProcessor::getNumPrograms()
+{
+    return 1;   // NB: some hosts don't cope very well if you tell them there are 0 programs,
+                // so this should at least be 1, even if you're not really implementing programs.
+}
+
+int VibeSparkProcessor::getCurrentProgram()
+{
+    return 0;
+}
+
+void VibeSparkProcessor::setCurrentProgram (int index)
+{
+    juce::ignoreUnused (index);
+}
+
+const juce::String VibeSparkProcessor::getProgramName (int index)
+{
+    juce::ignoreUnused (index);
+    return {};
+}
+
+void VibeSparkProcessor::changeProgramName (int index, const juce::String& newName)
+{
+    juce::ignoreUnused (index, newName);
+}
+
+//==============================================================================
+void VibeSparkProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+{
+    juce::ignoreUnused (sampleRate, samplesPerBlock);
+}
+
+void VibeSparkProcessor::releaseResources()
+{
+}
+
+#ifndef JucePlugin_PreferredChannelConfigurations
+bool VibeSparkProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+  #if JucePlugin_IsMidiEffect
+    juce::ignoreUnused (layouts);
+    return true;
+  #else
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
+     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        return false;
+
+   #if ! JucePlugin_IsSynth
+    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
+        return false;
+   #endif
+
+    return true;
+  #endif
+}
+#endif
+
+void VibeSparkProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    juce::ScopedNoDenormals noDenormals;
+    auto totalNumInputChannels  = getTotalNumInputChannels();
+    auto totalNumOutputChannels = getTotalNumOutputChannels();
+
+    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
+        buffer.clear (i, 0, buffer.getNumSamples());
+
+    // Process audio / MIDI here
+    juce::ignoreUnused (midiMessages);
+}
+
+//==============================================================================
+bool VibeSparkProcessor::hasEditor() const
+{
+    return true; // (change this to false if you choose to not supply an editor)
+}
+
+juce::AudioProcessorEditor* VibeSparkProcessor::createEditor()
+{
+    return new VibeSparkAudioProcessorEditor (*this);
+}
+
+//==============================================================================
+void VibeSparkProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    juce::ignoreUnused (destData);
+}
+
+void VibeSparkProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    juce::ignoreUnused (data, sizeInBytes);
+}
+
+void VibeSparkProcessor::cutAll(int channel)
+{
+    juce::ignoreUnused (channel);
+    // Method implementation for cutAll
+}
+
+//==============================================================================
+// This creates new instances of the plugin..
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new VibeSparkProcessor();
+}
