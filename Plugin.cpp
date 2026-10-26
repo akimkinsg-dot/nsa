@@ -32,29 +32,15 @@ struct PadVoice : juce::SynthesiserVoice {
   juce::ADSR env; double phase = 0, inc = 0; float level = 0;
 };
 
-// ===== МЕТАДАННЫЕ ЧУВСТВ: каждое значение сдвигает d=dark t=tense n=nostalgia a=air e=tear r=resolve h=human =====
-struct Meta { float d, t, n, a, e, r, h; };
-inline const Meta M_SEASON[4]  = { {-.10f,0,.10f,.10f,0,.10f,0}, {-.25f,-.05f,.25f,.05f,.05f,.10f,.10f}, {.05f,.05f,.30f,.10f,.20f,-.10f,0}, {.25f,.10f,.05f,.25f,.15f,-.10f,-.10f} };
-inline const Meta M_TIME[4]    = { {-.15f,0,.20f,.05f,.10f,.10f,.10f}, {.15f,.10f,0,.10f,.10f,0,0}, {.25f,.10f,.05f,.25f,.20f,-.20f,-.05f}, {-.05f,-.05f,.10f,.30f,.10f,.20f,0} };
-inline const Meta M_WEATHER[4] = { {0,0,0,0,0,0,0}, {.10f,.05f,.15f,.10f,.20f,-.05f,.05f}, {.05f,.10f,.05f,.30f,.10f,-.15f,-.05f}, {.10f,-.05f,.10f,.25f,.05f,.10f,-.10f} };
-inline const Meta M_CTX[5]     = { {-.15f,.05f,.05f,0,.05f,.20f,.20f}, {.10f,0,.15f,.15f,.15f,-.10f,-.10f}, {.15f,.20f,-.10f,-.15f,.05f,0,.10f}, {.05f,0,.10f,0,.05f,.10f,.05f}, {.20f,.25f,.20f,.10f,.35f,-.30f,-.05f} };
-struct SceneDef { const char* name; int se, ti, we, cx; };
-inline const SceneDef SCENES[] = {
-  {"Warm summer evening, a date", 1,0,0,0}, {"Driving home at dawn", 0,3,2,3},
-  {"First rain after the breakup", 2,1,1,4}, {"4 AM, club afterglow", 2,2,0,2},
-  {"Snowed in, thinking of her", 3,0,3,1}, {"Toxic night, city lights", 3,1,1,2},
-  {"Last night of summer, alone", 1,1,0,1}, {"Foggy morning, still awake", 3,3,2,1} };
-inline const int NUM_SCENES = (int) (sizeof(SCENES) / sizeof(SCENES[0]));
-
 class NSAProcessor : public juce::AudioProcessor {
 public:
   NSAProcessor() : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
     synth.addSound(new PadSound());
     for (int i = 0; i < 16; ++i) synth.addVoice(new PadVoice());
-    applyMeta(); generate();
+    generate();
   }
   const juce::String getName() const override { return "NSA Chords"; }
-  void prepareToPlay(double sr, int) override { sampleRate = sr; synth.setCurrentPlaybackSampleRate(sr); }
+  void prepareToPlay(double sr, int) override { sampleRate = sr; synth.setCurrentPlaybackSampleRate(sr); active.reserve(64); pending.reserve(64); }
   void releaseResources() override {}
   bool isBusesLayoutSupported(const BusesLayout& l) const override { return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo(); }
   bool acceptsMidi() const override { return true; }
@@ -73,7 +59,8 @@ public:
     juce::MemoryOutputStream o(d, true);
     o.writeInt(key); o.writeInt(open); o.writeFloat(dark); o.writeFloat(tense);
     o.writeInt(octaveShift); o.writeBool(noBass); o.writeBool(strum);
-    o.writeInt(season); o.writeInt(timeOfDay); o.writeInt(weather); o.writeInt(context); o.writeInt(scene);
+    o.writeFloat(nost.load()); o.writeFloat(air.load()); o.writeFloat(tear.load()); o.writeFloat(human.load());
+    o.writeInt(res.load()); o.writeInt(scene.load());
   }
   void setStateInformation(const void* data, int size) override {
     if (size < 20) return;
@@ -81,13 +68,12 @@ public:
     key = juce::jlimit(0, 12, in.readInt()); open = juce::jlimit(0, 1, in.readInt());
     dark = juce::jlimit(0.0f, 1.0f, in.readFloat()); tense = juce::jlimit(0.0f, 1.0f, in.readFloat());
     octaveShift = juce::jlimit(-1, 1, in.readInt()); noBass = in.readBool(); strum = in.readBool();
-    lastKey = key;
-    if (in.getNumBytesRemaining() >= 20) {
-      season = juce::jlimit(0, 3, in.readInt()); timeOfDay = juce::jlimit(0, 3, in.readInt());
-      weather = juce::jlimit(0, 3, in.readInt()); context = juce::jlimit(0, 4, in.readInt());
-      scene = juce::jlimit(0, NUM_SCENES, in.readInt());
+    if (in.getNumBytesRemaining() >= 24) {
+      nost = juce::jlimit(0.0f, 1.0f, in.readFloat()); air = juce::jlimit(0.0f, 1.0f, in.readFloat());
+      tear = juce::jlimit(0.0f, 1.0f, in.readFloat()); human = juce::jlimit(0.0f, 1.0f, in.readFloat());
+      res = juce::jlimit(0, 2, in.readInt()); scene = juce::jlimit(0, 8, in.readInt());
     }
-    applyMeta(false);
+    lastKey = key;
     generate();
   }
 
@@ -138,36 +124,37 @@ public:
         for (auto& a : active) ev.addEvent(juce::MidiMessage::noteOff(1, a.note), at);
         active.clear(); pending.clear();
       };
-      // отложенные ноты (живой строум / микро-тайминг), попавшие в этот блок
-      for (size_t i = 0; i < pending.size();) {
-        const juce::int64 rel = pending[i].at - clock;
-        if (rel < n) {
-          ev.addEvent(juce::MidiMessage::noteOn(1, pending[i].note, (juce::uint8) pending[i].vel), (int) juce::jmax<juce::int64>(0, rel));
-          active.push_back(Act{pending[i].note, pending[i].end});
-          pending.erase(pending.begin() + (long) i);
-        } else ++i;
-      }
       auto play = [&](const Hit& h, double t, int at) {
-        cutAll(at);
         if (h.chord < 0 || h.chord > 3) return;
+        if (!h.topOnly) cutAll(at);
         const auto& c = snap.voiced[h.chord];
+        const int sz = (int) c.size();
+        if (sz < 2) return;
         const int octOffset = octaveShift.load() * 12;
         const bool skipB = noBass.load();
         const bool doStrum = strum.load();
-        const float hu = human.load();
-        const size_t top = c.size() - 1;
-        for (size_t i = 0; i < c.size(); ++i) {
+        const float hm = human.load();
+        const double msToPpq = bpm / 60000.0;
+
+        for (int i = 0; i < sz; ++i) {
+          const bool isTop = (i == sz - 1);
           if (skipB && i == 0) continue;
-          const int note = c[i] + octOffset;
+          if (h.topOnly && !isTop) continue;
+          int note = c[(size_t) i];
+          double endT = t + h.len;
+          if (isTop && h.sus >= 0) { note = h.sus; endT = t + h.susLen; } // «слеза»: подвешенная нота
+          else if (i > 0 && !isTop && !h.topOnly) endT -= (double) hm * 0.1 * audioRng.nextFloat(); // голоса отпускаются не синхронно
+          note += octOffset;
           if (note < 0 || note > 127) continue;
-          // HUMAN: настоящий микро-тайминг в миллисекундах + разброс velocity, верхний голос чуть громче
-          const double ms = (doStrum ? 16.0 * (double) i : 0.0) + (double) hu * 16.0 * audioRng.nextDouble();
-          const int at2 = at + (int) (ms * 0.001 * sampleRate);
-          int vel = (i == 0 ? 76 : 60 + (i == top ? 8 : 0)) + (int) ((audioRng.nextFloat() - 0.5f) * 22.0f * hu);
-          vel = juce::jlimit(40, 100, vel);
-          const double endP = t + h.len;
-          if (at2 < n) { ev.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), at2); active.push_back(Act{note, endP}); }
-          else pending.push_back(Pend{clock + at2, note, vel, endP});
+
+          // ЖИВОСТЬ: ролл аккорда (Strum) + микро-тайминг в миллисекундах
+          double ms = h.topOnly ? (double) hm * 4.0 * audioRng.nextFloat()
+                                : (doStrum ? 22.0 * i : 0.0) + (double) hm * (6.0 * i + 8.0 * audioRng.nextFloat());
+          const int vel = calcVel(i, isTop, note, h.chord, hm, audioRng.nextFloat(), h.topOnly);
+
+          active.push_back(Act{note, endT});
+          if (ms < 0.5) ev.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), at);
+          else pending.push_back(Pend{t + ms * msToPpq, note, (juce::uint8) vel});
         }
       };
 
@@ -186,13 +173,18 @@ public:
           const double t = base + cyc * 16.0 + h.start;
           if (t >= w0 && t < p1) { release(t); play(h, t, off(t)); }
         }
+      for (size_t i = 0; i < pending.size();) {
+        if (pending[i].t < p1) {
+          ev.addEvent(juce::MidiMessage::noteOn(1, pending[i].note, pending[i].vel), off(pending[i].t));
+          pending.erase(pending.begin() + (long) i);
+        } else ++i;
+      }
       release(p1);
       expectedPpq = p1; wasRunning = true;
     } else if (wasRunning) {
       for (auto& a : active) ev.addEvent(juce::MidiMessage::noteOff(1, a.note), 0);
       active.clear(); pending.clear(); wasRunning = false;
     }
-    clock += n;
     synth.renderNextBlock(buffer, ev, 0, n);
     midi.swapWith(ev);
   }
@@ -201,12 +193,34 @@ public:
     if (newSeed) seed = uiRng.nextInt();
     juce::Random r(seed);
     juce::SpinLock::ScopedLockType l(lock);
-    state.generate(r, key, dark, tense, open != 0, getCurrentBpm(), newSeed, mood()); ++version;
+    state.feel = currentFeel();
+    state.generate(r, key, dark, tense, open != 0, getCurrentBpm(), newSeed); ++version;
   }
   void padChanged() { generate(false); }
+  Feel currentFeel() const {
+    Feel f; f.nost = nost.load(); f.res = res.load(); f.air = air.load(); f.tear = tear.load(); f.human = human.load();
+    return f;
+  }
+  // 0 = Free, 1..8 = сцена: выставляет точку на пэде и ВСЕ краски под эмоцию
+  void setScene(int idx) {
+    scene = idx;
+    if (idx < 1 || idx > 8) return;
+    const Scene& sc = SCENES[idx - 1];
+    dark = sc.dk; tense = sc.tn; nost = sc.f.nost; res = sc.f.res;
+    air = sc.f.air; tear = sc.f.tear; human = sc.f.human; strum = sc.strum;
+    generate();
+  }
+  static int calcVel(int i, bool isTop, int note, int chord, float hm, float rnd, bool soft) {
+    static const int arc[4] = {0, 3, 7, -3}; // динамическая дуга: к 3-му аккорду громче, к концу тише
+    int v = (i == 0) ? 76 : ((isTop ? 52 : 60) + (note % 7));
+    v += (int) std::lround(arc[chord] * hm) + (int) std::lround((rnd - 0.5f) * 10.0f * hm);
+    if (soft) v -= 6;
+    return juce::jlimit(36, 100, v);
+  }
   void evolve() {
     juce::SpinLock::ScopedLockType l(lock);
-    state.evolve(uiRng, key, tense, open != 0, getCurrentBpm(), mood()); ++version;
+    state.feel = currentFeel();
+    state.evolve(uiRng, key, tense, open != 0, getCurrentBpm()); ++version;
   }
   void setKey(int nk) {
     lastKey = key; key = nk;
@@ -219,27 +233,6 @@ public:
     }
   }
   void revoice() { juce::SpinLock::ScopedLockType l(lock); state.revoice(open != 0, uiRng); ++version; }
-  Mood mood() const { return Mood{nost.load(), air.load(), tear.load(), res.load()}; }
-  // метаданные -> позиция на паде + параметры движка
-  void applyMeta(bool setPad = true) {
-    float d = .5f, t = .4f, n = .3f, a = .4f, e = .3f, r = .5f, h = .4f;
-    const Meta* ms[4] = { &M_SEASON[season.load()], &M_TIME[timeOfDay.load()], &M_WEATHER[weather.load()], &M_CTX[context.load()] };
-    for (const Meta* m : ms) { d += m->d; t += m->t; n += m->n; a += m->a; e += m->e; r += m->r; h += m->h; }
-    auto c = [](float v) { return juce::jlimit(0.0f, 1.0f, v); };
-    if (setPad) { dark = c(d); tense = c(t); }
-    nost = c(n); air = c(a); tear = c(e); res = c(r); human = c(h);
-  }
-  void setMeta(int which, int idx) {
-    switch (which) { case 0: season = idx; break; case 1: timeOfDay = idx; break; case 2: weather = idx; break; default: context = idx; break; }
-    scene = 0; applyMeta(); generate(true);
-  }
-  void setScene(int s) {
-    scene = s;
-    if (s < 1 || s > NUM_SCENES) return;
-    const auto& d = SCENES[s - 1];
-    season = d.se; timeOfDay = d.ti; weather = d.we; context = d.cx;
-    applyMeta(); generate(true);
-  }
   void setPreview(bool on) { if (on) internalPpq = 0; preview = on; }
   juce::String getNames() { juce::SpinLock::ScopedLockType l(lock); return state.names; }
 
@@ -249,20 +242,25 @@ public:
     const int octOffset = octaveShift.load() * 12;
     const bool skipB = noBass.load();
     const bool doStrum = strum.load();
-    const float hu = human.load(); juce::Random rr;
+    const float hm = human.load();
 
     for (const auto& h : copy.hits) {
       if (h.chord < 0 || h.chord > 3) continue;
-      const double on = h.start * 480.0, offT = (h.start + h.len) * 480.0 - 10.0;
       const auto& c = copy.voiced[h.chord];
-      for (size_t j = 0; j < c.size(); ++j) {
+      const int sz = (int) c.size();
+      for (int j = 0; j < sz; ++j) {
+        const bool isTop = (j == sz - 1);
         if (skipB && j == 0) continue;
-        int note = c[j] + octOffset;
+        if (h.topOnly && !isTop) continue;
+        int note = c[(size_t) j];
+        double endBeat = h.start + h.len;
+        if (isTop && h.sus >= 0) { note = h.sus; endBeat = h.start + h.susLen; }
+        note += octOffset;
         if (note < 0 || note > 127) continue;
-        int tickOffset = (doStrum ? (int)(j * 15) : 0) + (int)(hu * 12.0f * rr.nextFloat());
-        int vel = juce::jlimit(40, 100, (j == 0 ? 76 : 60 + (j + 1 == c.size() ? 8 : 0)) + (int)((rr.nextFloat() - 0.5f) * 22.0f * hu));
-        seq.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), on + tickOffset);
-        seq.addEvent(juce::MidiMessage::noteOff(1, note), offT);
+        const int tickOffset = (!h.topOnly && doStrum) ? j * 15 : 0;
+        const int vel = calcVel(j, isTop, note, h.chord, hm, 0.5f, h.topOnly);
+        seq.addEvent(juce::MidiMessage::noteOn(1, note, (juce::uint8) vel), h.start * 480.0 + tickOffset);
+        seq.addEvent(juce::MidiMessage::noteOff(1, note), endBeat * 480.0 - 10.0);
       }
     }
     seq.addEvent(juce::MidiMessage::endOfTrack(), 7680.0);
@@ -279,13 +277,13 @@ public:
   std::atomic<int> key{0}, open{0}, octaveShift{0};
   std::atomic<float> dark{0.6f}, tense{0.4f};
   std::atomic<bool> preview{false}, noBass{false}, strum{false};
-  std::atomic<int> season{1}, timeOfDay{0}, weather{0}, context{0}, scene{1};
-  std::atomic<float> nost{0.3f}, air{0.4f}, tear{0.3f}, res{0.5f}, human{0.4f};
+  std::atomic<float> nost{0.0f}, air{0.0f}, tear{0.0f}, human{0.5f};
+  std::atomic<int> res{RES_HOME}, scene{0};
 
 private:
   struct Act { int note; double end; };
-  struct Pend { juce::int64 at; int note, vel; double end; };
-  std::vector<Pend> pending; juce::int64 clock = 0;
+  struct Pend { double t; int note; juce::uint8 vel; };
+  std::vector<Pend> pending;
   juce::Synthesiser synth;
   juce::SpinLock lock;
   ChordGen state, snap;
@@ -334,6 +332,10 @@ struct PadBox : juce::Component {
     g.drawText("Toxic TrapSoul", getWidth() - 120, 6, 112, 16, juce::Justification::right);
     g.drawText("4 AM Intimacy", getWidth() - 120, getHeight() - 22, 112, 16, juce::Justification::right);
 
+    for (const auto& sc : SCENES) {
+      g.setColour(juce::Colours::white.withAlpha(0.35f));
+      g.fillEllipse(b.getX() + sc.dk * b.getWidth() - 3.0f, b.getBottom() - sc.tn * b.getHeight() - 3.0f, 6.0f, 6.0f);
+    }
     const float x = b.getX() + proc.dark.load() * b.getWidth();
     const float y = b.getBottom() - proc.tense.load() * b.getHeight();
     g.setColour(juce::Colours::white); g.fillEllipse(x - 9.0f, y - 9.0f, 18.0f, 18.0f);
@@ -354,7 +356,7 @@ struct PadBox : juce::Component {
 class NSAEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
   explicit NSAEditor(NSAProcessor& p) : AudioProcessorEditor(&p), proc(p), pad(p), drag(p) {
-    setSize(400, 510);
+    setSize(400, 480);
     keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B","Free (Random Key)"}, 1);
     voiBox.addItemList(juce::StringArray{"Close Voicing","Open Voicing"}, 1);
     octBox.addItemList(juce::StringArray{"Oct: -1","Oct: 0","Oct: +1"}, 1);
@@ -367,18 +369,17 @@ public:
     voiBox.onChange = [this] { proc.open = voiBox.getSelectedItemIndex(); proc.revoice(); };
     octBox.onChange = [this] { proc.octaveShift = octBox.getSelectedItemIndex() - 1; };
 
-    sceneBox.addItem("Custom (meta)", 1);
-    for (int i = 0; i < NUM_SCENES; ++i) sceneBox.addItem(SCENES[i].name, i + 2);
-    seaBox.addItemList(juce::StringArray{"Spring","Summer","Autumn","Winter"}, 1);
-    timBox.addItemList(juce::StringArray{"Evening","Night","4 AM","Dawn"}, 1);
-    weaBox.addItemList(juce::StringArray{"Clear","Rain","Fog","Snow"}, 1);
-    ctxBox.addItemList(juce::StringArray{"Date","Alone","Club","Drive","Breakup"}, 1);
-    syncMeta();
-    sceneBox.onChange = [this] { const int i = sceneBox.getSelectedItemIndex(); if (i > 0) { proc.setScene(i); syncMeta(); pad.repaint(); } else proc.scene = 0; };
-    seaBox.onChange = [this] { metaChanged(0, seaBox); };
-    timBox.onChange = [this] { metaChanged(1, timBox); };
-    weaBox.onChange = [this] { metaChanged(2, weaBox); };
-    ctxBox.onChange = [this] { metaChanged(3, ctxBox); };
+    sceneBox.addItem("Scene: Free", 1);
+    for (int i = 0; i < 8; ++i) sceneBox.addItem(SCENES[i].name, i + 2);
+    sceneBox.setSelectedItemIndex(proc.scene.load(), juce::dontSendNotification);
+    sceneBox.onChange = [this] { proc.setScene(sceneBox.getSelectedItemIndex()); syncFromProc(); };
+    resBox.addItemList(juce::StringArray{"End: Home","End: Hang","End: Twist"}, 1);
+    resBox.setSelectedItemIndex(proc.res.load(), juce::dontSendNotification);
+    resBox.onChange = [this] { proc.res = resBox.getSelectedItemIndex(); proc.padChanged(); };
+    initCtl(cNost, "Nostalgia", proc.nost.load(), [this](float v) { proc.nost = v; proc.padChanged(); });
+    initCtl(cAir, "Air", proc.air.load(), [this](float v) { proc.air = v; proc.padChanged(); });
+    initCtl(cTear, "Tear", proc.tear.load(), [this](float v) { proc.tear = v; proc.padChanged(); });
+    initCtl(cHuman, "Human", proc.human.load(), [this](float v) { proc.human = v; });
 
     genBtn.setButtonText("Generate Vibe"); genBtn.onClick = [this] { proc.generate(); };
     contBtn.setButtonText("Evolve Loop"); contBtn.onClick = [this] { proc.evolve(); };
@@ -405,7 +406,7 @@ public:
     label.setJustificationType(juce::Justification::centred); label.setFont(14.0f);
     label.setColour(juce::Label::textColourId, juce::Colours::white);
 
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&sceneBox, &seaBox, &timBox, &weaBox, &ctxBox, &keyBox, &voiBox, &octBox, &pad, &genBtn, &contBtn, &preBtn, &nobassBtn, &strumBtn, &label, &drag})
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&keyBox, &voiBox, &octBox, &sceneBox, &resBox, &pad, &genBtn, &contBtn, &preBtn, &nobassBtn, &strumBtn, &label, &drag})
       addAndMakeVisible(c);
     startTimerHz(4); timerCallback();
   }
@@ -421,16 +422,18 @@ public:
     voiBox.setBounds(row.removeFromLeft(w3).reduced(2, 0)); 
     octBox.setBounds(row.reduced(2, 0));
 
-    r.removeFromTop(6); sceneBox.setBounds(r.removeFromTop(28).reduced(2, 0));
-    r.removeFromTop(6); row = r.removeFromTop(28); const int w4 = row.getWidth() / 4;
-    seaBox.setBounds(row.removeFromLeft(w4).reduced(2, 0)); timBox.setBounds(row.removeFromLeft(w4).reduced(2, 0));
-    weaBox.setBounds(row.removeFromLeft(w4).reduced(2, 0)); ctxBox.setBounds(row.reduced(2, 0));
+    r.removeFromTop(6); row = r.removeFromTop(28);
+    resBox.setBounds(row.removeFromRight(row.getWidth() / 3).reduced(2, 0));
+    sceneBox.setBounds(row.reduced(2, 0));
 
-    r.removeFromTop(6); pad.setBounds(r.removeFromTop(140).reduced(2, 0));
+    r.removeFromTop(6); pad.setBounds(r.removeFromTop(130).reduced(2, 0));
     
     r.removeFromTop(6); auto rowToggles = r.removeFromTop(26); int wt = rowToggles.getWidth() / 2;
     nobassBtn.setBounds(rowToggles.removeFromLeft(wt).reduced(2, 0));
     strumBtn.setBounds(rowToggles.reduced(2, 0));
+
+    r.removeFromTop(6); row = r.removeFromTop(22); placeCtl(cNost, row.removeFromLeft(row.getWidth() / 2)); placeCtl(cAir, row);
+    r.removeFromTop(4); row = r.removeFromTop(22); placeCtl(cTear, row.removeFromLeft(row.getWidth() / 2)); placeCtl(cHuman, row);
 
     r.removeFromTop(6); row = r.removeFromTop(30); int bw = row.getWidth() / 3;
     genBtn.setBounds(row.removeFromLeft(bw).reduced(2, 0)); 
@@ -440,21 +443,32 @@ public:
     r.removeFromTop(6); label.setBounds(r.removeFromTop(36));
     r.removeFromTop(6); drag.setBounds(r);
   }
-  void timerCallback() override { label.setText(proc.getNames(), juce::dontSendNotification); pad.repaint(); }
+  struct Ctl { juce::Label name; juce::Slider s; };
+  void initCtl(Ctl& c, const char* nm, float v, std::function<void(float)> cb) {
+    c.name.setText(nm, juce::dontSendNotification); c.name.setFont(12.0f);
+    c.name.setColour(juce::Label::textColourId, juce::Colour(0xffb08cff));
+    c.s.setSliderStyle(juce::Slider::LinearHorizontal);
+    c.s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 40, 18);
+    c.s.setRange(0.0, 100.0, 1.0); c.s.setTextValueSuffix("%");
+    c.s.setValue((double) v * 100.0, juce::dontSendNotification);
+    c.s.onValueChange = [&c, cb] { cb((float) (c.s.getValue() / 100.0)); };
+    addAndMakeVisible(c.name); addAndMakeVisible(c.s);
+  }
+  static void placeCtl(Ctl& c, juce::Rectangle<int> a) { a.reduce(2, 0); c.name.setBounds(a.removeFromLeft(58)); c.s.setBounds(a); }
+  void syncFromProc() {
+    cNost.s.setValue(proc.nost.load() * 100.0, juce::dontSendNotification);
+    cAir.s.setValue(proc.air.load() * 100.0, juce::dontSendNotification);
+    cTear.s.setValue(proc.tear.load() * 100.0, juce::dontSendNotification);
+    cHuman.s.setValue(proc.human.load() * 100.0, juce::dontSendNotification);
+    resBox.setSelectedItemIndex(proc.res.load(), juce::dontSendNotification);
+    strumBtn.setToggleState(proc.strum.load(), juce::dontSendNotification);
+    pad.repaint();
+  }
+  void timerCallback() override { label.setText(proc.getNames(), juce::dontSendNotification); }
 private:
-  void syncMeta() {
-    seaBox.setSelectedItemIndex(proc.season, juce::dontSendNotification);
-    timBox.setSelectedItemIndex(proc.timeOfDay, juce::dontSendNotification);
-    weaBox.setSelectedItemIndex(proc.weather, juce::dontSendNotification);
-    ctxBox.setSelectedItemIndex(proc.context, juce::dontSendNotification);
-    sceneBox.setSelectedItemIndex(proc.scene, juce::dontSendNotification);
-  }
-  void metaChanged(int which, juce::ComboBox& b) {
-    proc.setMeta(which, b.getSelectedItemIndex());
-    sceneBox.setSelectedItemIndex(0, juce::dontSendNotification); pad.repaint();
-  }
   NSAProcessor& proc;
-  juce::ComboBox keyBox, voiBox, octBox, sceneBox, seaBox, timBox, weaBox, ctxBox;
+  juce::ComboBox keyBox, voiBox, octBox, sceneBox, resBox;
+  Ctl cNost, cAir, cTear, cHuman;
   juce::TextButton genBtn, contBtn, preBtn, nobassBtn, strumBtn; 
   juce::Label label; PadBox pad; DragBox drag;
 };
