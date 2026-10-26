@@ -296,12 +296,68 @@ private:
   int fileCounter = 0;
 };
 
+namespace ui {
+  const juce::Colour bg(0xff0e0d0b), fg(0xffebe5d6), mu(0xff7f7867), chip(0xff1a1813), chipHi(0xff23201a),
+                     line(0xff2f2b22), gold(0xffb79a5b), goldHi(0xffd9bf86), ink(0xff0e0d0b), tag(0xffe0d8c4);
+}
+
+struct NSALook : juce::LookAndFeel_V4 {
+  NSALook() {
+    setColour(juce::ComboBox::textColourId, ui::fg);
+    setColour(juce::PopupMenu::backgroundColourId, ui::chip);
+    setColour(juce::PopupMenu::textColourId, ui::fg);
+    setColour(juce::PopupMenu::highlightedBackgroundColourId, ui::gold);
+    setColour(juce::PopupMenu::highlightedTextColourId, ui::ink);
+  }
+  juce::Font getComboBoxFont(juce::ComboBox&) override { return juce::Font(juce::FontOptions(13.0f)); }
+  juce::Font getPopupMenuFont() override { return juce::Font(juce::FontOptions(13.0f)); }
+  juce::Font getTextButtonFont(juce::TextButton&, int) override { return juce::Font(juce::FontOptions(13.0f)); }
+
+  void drawComboBox(juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& box) override {
+    auto r = juce::Rectangle<float>(0.0f, 0.0f, (float) w, (float) h).reduced(0.5f);
+    g.setColour(box.isMouseOver() ? ui::chipHi : ui::chip); g.fillRoundedRectangle(r, 10.0f);
+    g.setColour(ui::line); g.drawRoundedRectangle(r, 10.0f, 1.0f);
+    const float cx = (float) w - 13.0f, cy = (float) h * 0.5f;
+    juce::Path p; p.startNewSubPath(cx - 3.5f, cy - 1.5f); p.lineTo(cx, cy + 2.0f); p.lineTo(cx + 3.5f, cy - 1.5f);
+    g.setColour(ui::gold); g.strokePath(p, juce::PathStrokeType(1.3f));
+  }
+  void positionComboBoxText(juce::ComboBox& box, juce::Label& label) override {
+    label.setBounds(6, 1, box.getWidth() - 24, box.getHeight() - 2);
+    label.setFont(getComboBoxFont(box)); label.setJustificationType(juce::Justification::centred);
+  }
+  void drawButtonBackground(juce::Graphics& g, juce::Button& b, const juce::Colour& c, bool hl, bool down) override {
+    auto r = b.getLocalBounds().toFloat().reduced(0.5f);
+    auto col = c; if (down) col = col.darker(0.15f); else if (hl) col = col.brighter(0.08f);
+    g.setColour(col); g.fillRoundedRectangle(r, 10.0f);
+    if (c != ui::gold) { g.setColour(ui::line); g.drawRoundedRectangle(r, 10.0f, 1.0f); }
+  }
+  void drawToggleButton(juce::Graphics& g, juce::ToggleButton& b, bool hl, bool) override {
+    auto r = b.getLocalBounds().toFloat().reduced(0.5f);
+    g.setColour(hl ? ui::chipHi : ui::chip); g.fillRoundedRectangle(r, 10.0f);
+    g.setColour(ui::line); g.drawRoundedRectangle(r, 10.0f, 1.0f);
+    g.setColour(b.getToggleState() ? ui::gold : ui::line);
+    g.fillEllipse(r.getX() + 14.0f, r.getCentreY() - 3.0f, 6.0f, 6.0f);
+    g.setColour(ui::fg); g.setFont(13.0f);
+    g.drawText(b.getButtonText(), r.toNearestInt().withTrimmedLeft(28), juce::Justification::centredLeft);
+  }
+  void drawLinearSlider(juce::Graphics& g, int x, int y, int w, int h, float pos, float, float, juce::Slider::SliderStyle, juce::Slider&) override {
+    const float cy = (float) y + (float) h * 0.5f;
+    g.setColour(ui::line); g.fillRect((float) x, cy - 1.0f, (float) w, 2.0f);
+    g.setColour(ui::gold); g.fillRect((float) x, cy - 1.0f, pos - (float) x, 2.0f);
+    g.fillEllipse(pos - 4.0f, cy - 4.0f, 8.0f, 8.0f);
+  }
+};
+
 struct DragBox : juce::Component {
   explicit DragBox(NSAProcessor& p) : proc(p) { setMouseCursor(juce::MouseCursor::DraggingHandCursor); }
   void paint(juce::Graphics& g) override {
-    g.setColour(juce::Colour(0xff40267a)); g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(1), 10.0f);
-    g.setColour(juce::Colours::white); g.setFont(16.0f);
-    g.drawText("DRAG MIDI  >>  drop on DAW track", getLocalBounds(), juce::Justification::centred);
+    auto b = getLocalBounds().toFloat().reduced(0.5f);
+    g.setColour(ui::gold); g.fillRoundedRectangle(b, 10.0f);
+    g.setColour(ui::ink.withAlpha(0.65f));
+    for (int i = 0; i < 2; ++i) for (int j = 0; j < 3; ++j)
+      g.fillEllipse(b.getX() + 16.0f + (float) i * 5.0f, b.getCentreY() - 7.0f + (float) j * 5.0f, 2.5f, 2.5f);
+    g.setColour(ui::ink); g.setFont(14.0f);
+    g.drawText("Drag MIDI to track", getLocalBounds(), juce::Justification::centred);
   }
   void mouseDrag(const juce::MouseEvent& e) override {
     if (!dragging && e.getDistanceFromDragStart() > 4) {
@@ -318,49 +374,75 @@ struct DragBox : juce::Component {
 
 struct PadBox : juce::Component {
   explicit PadBox(NSAProcessor& p) : proc(p) {}
-  void paint(juce::Graphics& g) override {
-    auto b = getLocalBounds().toFloat().reduced(1);
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff8a7be0), b.getX(), 0.0f, juce::Colour(0xff0b0818), b.getRight(), 0.0f, false));
-    g.fillRoundedRectangle(b, 10.0f);
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0x66ff4d6d), 0.0f, b.getY(), juce::Colour(0x00ff4d6d), 0.0f, b.getBottom(), false));
-    g.fillRoundedRectangle(b, 10.0f);
-    
-    // Подписываем 4 обновленных интимных/ночных квадранта R&B вайба
-    g.setColour(juce::Colours::white.withAlpha(0.85f)); g.setFont(11.0f);
-    g.drawText("Candlelight & Dates", 8, 6, 120, 16, juce::Justification::left);
-    g.drawText("Ethereal Drama", 8, getHeight() - 22, 120, 16, juce::Justification::left);
-    g.drawText("Toxic TrapSoul", getWidth() - 120, 6, 112, 16, juce::Justification::right);
-    g.drawText("4 AM Intimacy", getWidth() - 120, getHeight() - 22, 112, 16, juce::Justification::right);
+  juce::Rectangle<float> area() const { return getLocalBounds().toFloat().reduced(9.0f); }
 
-    for (const auto& sc : SCENES) {
-      g.setColour(juce::Colours::white.withAlpha(0.35f));
-      g.fillEllipse(b.getX() + sc.dk * b.getWidth() - 3.0f, b.getBottom() - sc.tn * b.getHeight() - 3.0f, 6.0f, 6.0f);
+  void resized() override {
+    const int w = getWidth(), h = getHeight(); if (w <= 0 || h <= 0) return;
+    const int S = 2;
+    bgImg = juce::Image(juce::Image::ARGB, w * S, h * S, true);
+    juce::Graphics g(bgImg); g.addTransform(juce::AffineTransform::scale((float) S));
+    juce::Path clip; clip.addRoundedRectangle(0.0f, 0.0f, (float) w, (float) h, 10.0f);
+    g.reduceClipRegion(clip, juce::AffineTransform());
+    g.fillAll(juce::Colour(0xff0f0e0c));
+    auto glow = [&](float cx, float cy, float r, juce::Colour c) {
+      juce::ColourGradient gr(c, cx, cy, c.withAlpha(0.0f), cx + r, cy, true);
+      gr.addColour(0.5, c.withMultipliedAlpha(0.45f));
+      g.setGradientFill(gr); g.fillRect(0.0f, 0.0f, (float) w, (float) h);
+    };
+    const float fw = (float) w, fh = (float) h;
+    glow(0.0f, 0.0f, fw * 0.55f, juce::Colour(84, 122, 152).withAlpha(0.40f));     // Ethereal: пыльно-голубой
+    glow(0.0f, fh, fw * 0.55f, juce::Colour(146, 76, 56).withAlpha(0.40f));        // Candlelight: ember
+    glow(fw, 0.0f, fw * 0.50f, juce::Colour(68, 116, 96).withAlpha(0.36f));        // Toxic: меланхоличный зелёный
+    glow(fw, fh, fw * 0.55f, juce::Colour(26, 40, 88).withAlpha(0.62f));           // 4 AM: ночной синий
+    glow(fw * 0.76f, fh * 0.24f, fw * 0.22f, juce::Colour(120, 185, 150).withAlpha(0.13f)); // блик-сияние
+    juce::Random rnd(7);
+    const int n = (w * h) / 160;
+    for (int i = 0; i < n; ++i) {
+      const float z = rnd.nextFloat() < 0.8f ? 1.0f : 1.6f, o = 0.15f + rnd.nextFloat() * 0.5f;
+      const bool gl = rnd.nextFloat() < 0.6f;
+      const float x = rnd.nextFloat() * fw, y = rnd.nextFloat() * fh;
+      g.setColour((gl ? ui::goldHi : ui::fg).withAlpha(o)); g.fillEllipse(x, y, z, z);
     }
-    const float x = b.getX() + proc.dark.load() * b.getWidth();
-    const float y = b.getBottom() - proc.tense.load() * b.getHeight();
-    g.setColour(juce::Colours::white); g.fillEllipse(x - 9.0f, y - 9.0f, 18.0f, 18.0f);
-    g.setColour(juce::Colour(0xff40267a)); g.drawEllipse(x - 9.0f, y - 9.0f, 18.0f, 18.0f, 2.0f);
+  }
+
+  void paint(juce::Graphics& g) override {
+    if (bgImg.isValid()) g.drawImage(bgImg, getLocalBounds().toFloat());
+    const int w = getWidth(), h = getHeight();
+    g.setColour(ui::tag); g.setFont(11.0f);
+    g.drawText("Ethereal", 10, 6, 100, 16, juce::Justification::left);
+    g.drawText("Toxic", w - 110, 6, 100, 16, juce::Justification::right);
+    g.drawText("Candlelight", 10, h - 22, 100, 16, juce::Justification::left);
+    g.drawText("4 AM", w - 110, h - 22, 100, 16, juce::Justification::right);
+    const auto a = area();
+    g.setColour(ui::goldHi);
+    for (const auto& sc : SCENES)
+      g.drawEllipse(a.getX() + sc.dk * a.getWidth() - 2.5f, a.getBottom() - sc.tn * a.getHeight() - 2.5f, 5.0f, 5.0f, 1.0f);
+    const float x = a.getX() + proc.dark.load() * a.getWidth();
+    const float y = a.getBottom() - proc.tense.load() * a.getHeight();
+    g.setColour(ui::fg); g.fillEllipse(x - 6.5f, y - 6.5f, 13.0f, 13.0f);
+    g.setColour(ui::gold); g.drawEllipse(x - 6.5f, y - 6.5f, 13.0f, 13.0f, 2.0f);
   }
   void mouseDown(const juce::MouseEvent& e) override { move(e); }
   void mouseDrag(const juce::MouseEvent& e) override { move(e); }
   void move(const juce::MouseEvent& e) {
-    auto b = getLocalBounds().toFloat().reduced(1);
-    proc.dark = juce::jlimit(0.0f, 1.0f, (e.position.x - b.getX()) / b.getWidth());
-    proc.tense = juce::jlimit(0.0f, 1.0f, (b.getBottom() - e.position.y) / b.getHeight());
+    const auto a = area();
+    proc.dark = juce::jlimit(0.0f, 1.0f, (e.position.x - a.getX()) / a.getWidth());
+    proc.tense = juce::jlimit(0.0f, 1.0f, (a.getBottom() - e.position.y) / a.getHeight());
     proc.padChanged();
     repaint();
   }
-  NSAProcessor& proc;
+  NSAProcessor& proc; juce::Image bgImg;
 };
 
 class NSAEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
   explicit NSAEditor(NSAProcessor& p) : AudioProcessorEditor(&p), proc(p), pad(p), drag(p) {
-    setSize(400, 480);
-    keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B","Free (Random Key)"}, 1);
-    voiBox.addItemList(juce::StringArray{"Close Voicing","Open Voicing"}, 1);
+    setLookAndFeel(&look);
+    setSize(400, 536);
+    keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B","Free key"}, 1);
+    voiBox.addItemList(juce::StringArray{"Close","Open"}, 1);
     octBox.addItemList(juce::StringArray{"Oct: -1","Oct: 0","Oct: +1"}, 1);
-    
+
     keyBox.setSelectedItemIndex(proc.key, juce::dontSendNotification);
     voiBox.setSelectedItemIndex(proc.open, juce::dontSendNotification);
     octBox.setSelectedItemIndex(proc.octaveShift + 1, juce::dontSendNotification);
@@ -381,10 +463,18 @@ public:
     initCtl(cTear, "Tear", proc.tear.load(), [this](float v) { proc.tear = v; proc.padChanged(); });
     initCtl(cHuman, "Human", proc.human.load(), [this](float v) { proc.human = v; });
 
-    genBtn.setButtonText("Generate Vibe"); genBtn.onClick = [this] { proc.generate(); };
-    contBtn.setButtonText("Evolve Loop"); contBtn.onClick = [this] { proc.evolve(); };
-    
+    genBtn.setButtonText("Generate"); genBtn.onClick = [this] { proc.generate(); };
+    contBtn.setButtonText("Evolve"); contBtn.onClick = [this] { proc.evolve(); };
+    genBtn.setColour(juce::TextButton::buttonColourId, ui::gold);
+    genBtn.setColour(juce::TextButton::textColourOffId, ui::ink);
+    contBtn.setColour(juce::TextButton::buttonColourId, ui::chip);
+    contBtn.setColour(juce::TextButton::textColourOffId, ui::fg);
+
     preBtn.setClickingTogglesState(true);
+    preBtn.setColour(juce::TextButton::buttonColourId, ui::chip);
+    preBtn.setColour(juce::TextButton::buttonOnColourId, ui::gold);
+    preBtn.setColour(juce::TextButton::textColourOffId, ui::fg);
+    preBtn.setColour(juce::TextButton::textColourOnId, ui::ink);
     preBtn.setToggleState(proc.preview.load(), juce::dontSendNotification);
     preBtn.setButtonText(proc.preview.load() ? "Stop" : "Preview");
     preBtn.onClick = [this] {
@@ -393,83 +483,93 @@ public:
       preBtn.setButtonText(on ? "Stop" : "Preview");
     };
 
-    nobassBtn.setButtonText("No Bass (808 Safe)");
-    nobassBtn.setClickingTogglesState(true);
+    nobassBtn.setButtonText("No bass");
     nobassBtn.setToggleState(proc.noBass.load(), juce::dontSendNotification);
     nobassBtn.onClick = [this] { proc.noBass = nobassBtn.getToggleState(); };
 
     strumBtn.setButtonText("Strum");
-    strumBtn.setClickingTogglesState(true);
     strumBtn.setToggleState(proc.strum.load(), juce::dontSendNotification);
     strumBtn.onClick = [this] { proc.strum = strumBtn.getToggleState(); };
 
-    label.setJustificationType(juce::Justification::centred); label.setFont(14.0f);
-    label.setColour(juce::Label::textColourId, juce::Colours::white);
+    label.setJustificationType(juce::Justification::centred); label.setFont(13.0f);
+    label.setMinimumHorizontalScale(0.7f);
+    label.setColour(juce::Label::textColourId, ui::fg);
 
     for (juce::Component* c : std::initializer_list<juce::Component*>{&keyBox, &voiBox, &octBox, &sceneBox, &resBox, &pad, &genBtn, &contBtn, &preBtn, &nobassBtn, &strumBtn, &label, &drag})
       addAndMakeVisible(c);
     startTimerHz(4); timerCallback();
   }
+  ~NSAEditor() override { setLookAndFeel(nullptr); }
+
   void paint(juce::Graphics& g) override {
-    g.fillAll(juce::Colour(0xff14101f));
-    g.setColour(juce::Colour(0xffb08cff)); g.setFont(18.0f);
-    g.drawText("NSA CHORDS // TrapSoul & R&B", 14, 8, 300, 24, juce::Justification::left);
+    g.fillAll(ui::bg);
+    g.setColour(ui::fg); g.setFont(17.0f);
+    g.drawText("NSA Chords", 21, 14, 260, 24, juce::Justification::left);
   }
   void resized() override {
-    auto r = getLocalBounds().reduced(14); r.removeFromTop(28);
-    auto row = r.removeFromTop(28); int w3 = row.getWidth() / 3;
-    keyBox.setBounds(row.removeFromLeft(w3).reduced(2, 0)); 
-    voiBox.setBounds(row.removeFromLeft(w3).reduced(2, 0)); 
-    octBox.setBounds(row.reduced(2, 0));
+    auto r = getLocalBounds().reduced(18); r.removeFromTop(30);
+    auto row = r.removeFromTop(30); const int w3 = row.getWidth() / 3;
+    keyBox.setBounds(row.removeFromLeft(w3).reduced(3, 0));
+    voiBox.setBounds(row.removeFromLeft(w3).reduced(3, 0));
+    octBox.setBounds(row.reduced(3, 0));
 
-    r.removeFromTop(6); row = r.removeFromTop(28);
-    resBox.setBounds(row.removeFromRight(row.getWidth() / 3).reduced(2, 0));
-    sceneBox.setBounds(row.reduced(2, 0));
+    r.removeFromTop(8); row = r.removeFromTop(30);
+    resBox.setBounds(row.removeFromRight(row.getWidth() * 2 / 5).reduced(3, 0));
+    sceneBox.setBounds(row.reduced(3, 0));
 
-    r.removeFromTop(6); pad.setBounds(r.removeFromTop(130).reduced(2, 0));
-    
-    r.removeFromTop(6); auto rowToggles = r.removeFromTop(26); int wt = rowToggles.getWidth() / 2;
-    nobassBtn.setBounds(rowToggles.removeFromLeft(wt).reduced(2, 0));
-    strumBtn.setBounds(rowToggles.reduced(2, 0));
+    r.removeFromTop(8); pad.setBounds(r.removeFromTop(150).reduced(3, 0));
 
-    r.removeFromTop(6); row = r.removeFromTop(22); placeCtl(cNost, row.removeFromLeft(row.getWidth() / 2)); placeCtl(cAir, row);
-    r.removeFromTop(4); row = r.removeFromTop(22); placeCtl(cTear, row.removeFromLeft(row.getWidth() / 2)); placeCtl(cHuman, row);
+    r.removeFromTop(8); row = r.removeFromTop(30); const int wt = row.getWidth() / 2;
+    nobassBtn.setBounds(row.removeFromLeft(wt).reduced(3, 0));
+    strumBtn.setBounds(row.reduced(3, 0));
 
-    r.removeFromTop(6); row = r.removeFromTop(30); int bw = row.getWidth() / 3;
-    genBtn.setBounds(row.removeFromLeft(bw).reduced(2, 0)); 
-    contBtn.setBounds(row.removeFromLeft(bw).reduced(2, 0)); 
-    preBtn.setBounds(row.reduced(2, 0));
+    r.removeFromTop(8); row = r.removeFromTop(34); placeCtl(cNost, row.removeFromLeft(row.getWidth() / 2)); placeCtl(cAir, row);
+    r.removeFromTop(6); row = r.removeFromTop(34); placeCtl(cTear, row.removeFromLeft(row.getWidth() / 2)); placeCtl(cHuman, row);
 
-    r.removeFromTop(6); label.setBounds(r.removeFromTop(36));
-    r.removeFromTop(6); drag.setBounds(r);
+    r.removeFromTop(8); row = r.removeFromTop(34); const int bw = row.getWidth() / 3;
+    genBtn.setBounds(row.removeFromLeft(bw).reduced(3, 0));
+    contBtn.setBounds(row.removeFromLeft(bw).reduced(3, 0));
+    preBtn.setBounds(row.reduced(3, 0));
+
+    r.removeFromTop(8); label.setBounds(r.removeFromTop(26));
+    r.removeFromTop(8); drag.setBounds(r.reduced(3, 0));
   }
-  struct Ctl { juce::Label name; juce::Slider s; };
+  struct Ctl { juce::Label name, val; juce::Slider s; };
+  static void setValText(Ctl& c) { c.val.setText(juce::String((int) std::lround(c.s.getValue())), juce::dontSendNotification); }
   void initCtl(Ctl& c, const char* nm, float v, std::function<void(float)> cb) {
-    c.name.setText(nm, juce::dontSendNotification); c.name.setFont(12.0f);
-    c.name.setColour(juce::Label::textColourId, juce::Colour(0xffb08cff));
+    c.name.setText(nm, juce::dontSendNotification); c.name.setFont(13.0f);
+    c.name.setColour(juce::Label::textColourId, ui::fg);
+    c.val.setFont(13.0f); c.val.setJustificationType(juce::Justification::centredRight);
+    c.val.setColour(juce::Label::textColourId, ui::mu);
     c.s.setSliderStyle(juce::Slider::LinearHorizontal);
-    c.s.setTextBoxStyle(juce::Slider::TextBoxRight, false, 40, 18);
-    c.s.setRange(0.0, 100.0, 1.0); c.s.setTextValueSuffix("%");
-    c.s.setValue((double) v * 100.0, juce::dontSendNotification);
-    c.s.onValueChange = [&c, cb] { cb((float) (c.s.getValue() / 100.0)); };
-    addAndMakeVisible(c.name); addAndMakeVisible(c.s);
+    c.s.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    c.s.setRange(0.0, 100.0, 1.0);
+    c.s.setValue((double) v * 100.0, juce::dontSendNotification); setValText(c);
+    c.s.onValueChange = [this, &c, cb] { setValText(c); cb((float) (c.s.getValue() / 100.0)); };
+    addAndMakeVisible(c.name); addAndMakeVisible(c.val); addAndMakeVisible(c.s);
   }
-  static void placeCtl(Ctl& c, juce::Rectangle<int> a) { a.reduce(2, 0); c.name.setBounds(a.removeFromLeft(58)); c.s.setBounds(a); }
+  static void placeCtl(Ctl& c, juce::Rectangle<int> a) {
+    a.reduce(4, 0);
+    auto top = a.removeFromTop(16);
+    c.val.setBounds(top.removeFromRight(34)); c.name.setBounds(top);
+    c.s.setBounds(a);
+  }
+  void setCtl(Ctl& c, float v) { c.s.setValue((double) v * 100.0, juce::dontSendNotification); setValText(c); }
   void syncFromProc() {
-    cNost.s.setValue(proc.nost.load() * 100.0, juce::dontSendNotification);
-    cAir.s.setValue(proc.air.load() * 100.0, juce::dontSendNotification);
-    cTear.s.setValue(proc.tear.load() * 100.0, juce::dontSendNotification);
-    cHuman.s.setValue(proc.human.load() * 100.0, juce::dontSendNotification);
+    setCtl(cNost, proc.nost.load()); setCtl(cAir, proc.air.load());
+    setCtl(cTear, proc.tear.load()); setCtl(cHuman, proc.human.load());
     resBox.setSelectedItemIndex(proc.res.load(), juce::dontSendNotification);
     strumBtn.setToggleState(proc.strum.load(), juce::dontSendNotification);
     pad.repaint();
   }
-  void timerCallback() override { label.setText(proc.getNames(), juce::dontSendNotification); }
+  void timerCallback() override { label.setText(proc.getNames().replace("   |   ", juce::String::fromUTF8("  \xc2\xb7  ")), juce::dontSendNotification); }
 private:
+  NSALook look;
   NSAProcessor& proc;
   juce::ComboBox keyBox, voiBox, octBox, sceneBox, resBox;
   Ctl cNost, cAir, cTear, cHuman;
-  juce::TextButton genBtn, contBtn, preBtn, nobassBtn, strumBtn; 
+  juce::TextButton genBtn, contBtn, preBtn;
+  juce::ToggleButton nobassBtn, strumBtn;
   juce::Label label; PadBox pad; DragBox drag;
 };
 
