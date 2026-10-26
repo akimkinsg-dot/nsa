@@ -5,12 +5,12 @@
 #include <functional>
 #include <cmath>
 
-enum { MAJ7, MAJ9, M7, M9, M11, D9, D13, MAJ7S11, D7B9, SUS9, MMAJ7, SIX9, ADD9, M7B5 };
+enum { MAJ7, MAJ9, M7, M9, M11, D9, D13, MAJ7S11, D7B9, SUS9, MMAJ7, SIX9, ADD9, M7B5, M6 };
 inline const std::vector<int> IV[] = {
   {0,4,7,11},{0,4,7,11,14},{0,3,7,10},{0,3,7,10,14},{0,3,7,10,14,17},
   {0,4,7,10,14},{0,4,10,14,21},{0,4,7,11,18},{0,4,7,10,13},{0,5,7,10,14},
-  {0,3,7,11},{0,4,7,9,14},{0,4,7,14},{0,3,6,10}};
-inline const char* SUF[] = {"maj7","maj9","m7","m9","m11","9","13","maj7#11","7b9","9sus4","m(maj7)","6/9","add9","m7b5"};
+  {0,3,7,11},{0,4,7,9,14},{0,4,7,14},{0,3,6,10},{0,3,7,9}};
+inline const char* SUF[] = {"maj7","maj9","m7","m9","m11","9","13","maj7#11","7b9","9sus4","m(maj7)","6/9","add9","m7b5","m6"};
 inline const char* NOTE_NAMES[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
 
 inline double tensOf(int t) {
@@ -21,6 +21,7 @@ inline double tensOf(int t) {
     case MAJ7S11: case SUS9: return 0.5;
     case D9: return 0.6;
     case D13: return 0.7;
+    case M6: return 0.4;
     case MMAJ7: case M7B5: return 0.8;
     case D7B9: return 1.0;
     default: return 0.3;
@@ -108,11 +109,230 @@ inline const std::vector<Prog> BANK = {
   mkP(mk(0,M9), mk(3,MAJ7S11), mk(2,M7B5), mk(7,D7B9),           0.85f, 0.75f),
   mkP(mk(5,M11), mk(1,D9), mk(0,MMAJ7), mk(8,MAJ9),              0.85f, 0.85f),
   mkP(mk(0,MMAJ7), mk(0,M9,10), mk(8,MAJ7S11), mk(2,M7B5),       0.95f, 0.80f),
-  mkP(mk(1,MAJ9), mk(0,M11), mk(8,MAJ7S11), mk(7,D13),           0.80f, 0.70f)
+  mkP(mk(1,MAJ9), mk(0,M11), mk(8,MAJ7S11), mk(7,D13),           0.80f, 0.70f),
+
+  // ===== v2: ТЁПЛОЕ / ДЕЙТ — плагальные заимствования, тритоновые замены, нисходящий бас (Kaleem Taylor, Nobu Woods, The Code) =====
+  mkP(mk(5,MAJ9), mk(5,M9), mk(0,MAJ9), mk(9,M9),                0.18f, 0.22f),
+  mkP(mk(0,MAJ9), mk(10,D13), mk(5,MAJ9), mk(5,M9),              0.22f, 0.28f),
+  mkP(mk(4,M9), mk(9,D9), mk(2,M9), mk(7,SUS9),                  0.20f, 0.25f),
+  mkP(mk(0,MAJ9), mk(3,MAJ7), mk(5,MAJ9), mk(0,SIX9),            0.25f, 0.28f),
+  mkP(mk(2,M9), mk(1,D13), mk(0,MAJ9), mk(9,M9),                 0.20f, 0.30f),
+  mkP(mk(0,ADD9), mk(4,M9), mk(5,MAJ9), mk(5,M6),                0.22f, 0.25f),
+  mkP(mk(10,MAJ9), mk(5,MAJ9), mk(0,SIX9), mk(7,SUS9),           0.28f, 0.22f),
+  mkP(mk(0,MAJ9), mk(9,M9), mk(2,M9), mk(7,D13),                 0.15f, 0.22f),
+  mkP(mk(5,MAJ9), mk(4,M9), mk(2,M9), mk(0,MAJ9),                0.15f, 0.20f),
+
+  // ===== v2: ТРЕПЕТ / ЖЕЛАНИЕ — лидийские краски, хроматический бас =====
+  mkP(mk(0,MAJ9), mk(2,D9), mk(5,MAJ7S11), mk(7,SUS9),           0.25f, 0.45f),
+  mkP(mk(0,MAJ9), mk(8,MAJ7S11), mk(3,MAJ9), mk(10,D9),          0.20f, 0.45f),
+  mkP(mk(5,MAJ7S11), mk(4,M9), mk(3,MAJ9), mk(2,M9),             0.25f, 0.50f),
+
+  // ===== v2: РАССВЕТ / СУМЕРКИ (середина пада) — смена мажор/минор, ii-I-bVII =====
+  mkP(mk(0,M9), mk(5,M9), mk(10,MAJ9), mk(3,MAJ9),               0.50f, 0.30f),
+  mkP(mk(9,M9), mk(2,M9), mk(7,D13), mk(0,MAJ9),                 0.45f, 0.30f),
+  mkP(mk(0,MAJ9), mk(0,M9), mk(8,MAJ9), mk(10,D9),               0.50f, 0.40f),
+  mkP(mk(5,MAJ9), mk(5,M9), mk(3,MAJ9), mk(0,MAJ9),              0.50f, 0.40f),
+  mkP(mk(0,M9), mk(8,MAJ7S11), mk(10,MAJ9), mk(7,SUS9),          0.55f, 0.40f),
+  mkP(mk(2,M9), mk(0,MAJ9), mk(10,MAJ9), mk(7,SUS9),             0.45f, 0.35f),
+  mkP(mk(0,MAJ9), mk(0,M9), mk(8,MAJ7S11), mk(7,D7B9),           0.50f, 0.65f),
+  mkP(mk(0,SIX9), mk(3,D9), mk(8,MAJ7S11), mk(7,D7B9),           0.55f, 0.70f),
+
+  // ===== v2: 4 AM — OVO / PND / The Weeknd: линия m7-mMaj7-m6, бемоль-II, бэкдор =====
+  mkP(mk(0,M9), mk(5,M11), mk(10,D9), mk(3,MAJ9),                0.70f, 0.35f),
+  mkP(mk(0,M9), mk(0,MMAJ7), mk(0,M7), mk(0,M6),                 0.70f, 0.50f),
+  mkP(mk(5,M9), mk(5,MMAJ7), mk(5,M7), mk(5,M6),                 0.75f, 0.50f),
+  mkP(mk(1,MAJ9), mk(0,M9), mk(5,M9), mk(7,SUS9),                0.75f, 0.40f),
+  mkP(mk(0,M11), mk(1,MAJ7S11), mk(0,M9), mk(3,MAJ9),            0.80f, 0.40f),
+  mkP(mk(5,M9), mk(10,D13), mk(3,MAJ9), mk(8,MAJ9),              0.65f, 0.35f),
+  mkP(mk(8,MAJ9), mk(10,D9), mk(0,M9), mk(3,MAJ9),               0.70f, 0.30f),
+  mkP(mk(0,M9), mk(7,M9), mk(8,MAJ9), mk(5,M9),                  0.70f, 0.30f),
+  mkP(mk(3,MAJ9), mk(10,MAJ9), mk(8,MAJ9), mk(7,SUS9),           0.65f, 0.30f),
+  mkP(mk(0,M9), mk(8,MAJ9), mk(10,SUS9), mk(0,M11),              0.75f, 0.35f),
+
+  // ===== v2: ОЦЕПЕНЕНИЕ / ПУСТОТА (очень тёмно, мало движения) =====
+  mkP(mk(0,M11), mk(8,MAJ9), mk(0,M9), mk(8,MAJ7S11),            0.90f, 0.20f),
+  mkP(mk(0,M9), mk(3,MAJ9), mk(0,M11), mk(3,MAJ7),               0.85f, 0.15f),
+
+  // ===== v2: ТОКСИЧНО — полууменьшённая тоника, тритоновая замена, mMaj7 =====
+  mkP(mk(0,MMAJ7), mk(1,MAJ7S11), mk(0,M11), mk(7,D7B9),         0.95f, 0.80f),
+  mkP(mk(5,M11), mk(1,D13), mk(0,MMAJ7), mk(8,MAJ7S11),          0.90f, 0.75f),
+  mkP(mk(0,M7B5), mk(8,MAJ9), mk(5,M9), mk(7,D7B9),              0.90f, 0.85f),
+  mkP(mk(0,M9), mk(2,M7B5), mk(8,MAJ7S11), mk(1,MAJ9),           0.85f, 0.80f),
+  mkP(mk(8,MAJ9), mk(7,D7B9), mk(0,MMAJ7), mk(0,M6),             0.90f, 0.80f),
+  mkP(mk(0,MMAJ7), mk(0,M9), mk(0,M6), mk(8,MAJ7S11),            0.85f, 0.70f),
+
+  // ===== v3: выучено на 120 R&B MIDI (аккорды отделены от мелодий, приведены к C) =====
+  mkP(mk(8,MAJ7), mk(11,MAJ7S11), mk(0,M7), mk(3,D9), 0.45f, 0.40f),
+  mkP(mk(8,SIX9), mk(7,M7), mk(8,MAJ9), mk(5,M11), 0.60f, 0.25f),
+  mkP(mk(8,MAJ7), mk(10,SIX9), mk(7,D9), mk(0,M6), 0.45f, 0.35f),
+  mkP(mk(5,MAJ7), mk(9,M9), mk(0,MAJ7), mk(2,M11), 0.35f, 0.25f),
+  mkP(mk(0,M9), mk(5,M9), mk(0,M9), mk(8,MAJ9), 0.70f, 0.25f),
+  mkP(mk(8,MAJ9), mk(5,M9), mk(8,MAJ9), mk(10,SIX9), 0.50f, 0.20f),
+  mkP(mk(5,M6), mk(7,ADD9), mk(0,M6), mk(3,MAJ7), 0.55f, 0.30f),
+  mkP(mk(0,M11), mk(5,M9), mk(8,MAJ7), mk(3,ADD9), 0.60f, 0.25f),
+  mkP(mk(8,MAJ7), mk(5,SUS9), mk(0,M7), mk(3,D9), 0.45f, 0.40f),
+  mkP(mk(5,M9), mk(0,M11), mk(5,M9), mk(8,MAJ7), 0.70f, 0.25f),
+  mkP(mk(5,MAJ9), mk(2,M11), mk(7,SUS9), mk(0,MAJ9), 0.25f, 0.30f),
+  mkP(mk(2,M11), mk(5,MAJ7), mk(0,SIX9), mk(7,ADD9), 0.25f, 0.20f),
+  mkP(mk(2,M11), mk(5,MAJ7), mk(0,MAJ9), mk(4,M11), 0.35f, 0.25f),
+  mkP(mk(2,M9), mk(7,SUS9), mk(0,MAJ7), mk(5,MAJ7), 0.25f, 0.25f),
+  mkP(mk(0,M7), mk(7,M6), mk(8,MAJ9), mk(5,SUS9), 0.55f, 0.35f),
+  mkP(mk(0,M6), mk(7,D9), mk(8,MAJ7), mk(7,D9), 0.45f, 0.45f),
+  mkP(mk(0,MAJ7), mk(5,MAJ7), mk(2,M7), mk(10,MAJ9), 0.30f, 0.15f),
+  mkP(mk(0,ADD9), mk(3,MAJ7), mk(5,SIX9), mk(0,ADD9), 0.30f, 0.10f),
+  mkP(mk(0,M11), mk(10,ADD9), mk(7,M7), mk(5,ADD9), 0.55f, 0.25f),
+  mkP(mk(5,M9), mk(7,M7), mk(5,M9), mk(0,M11), 0.75f, 0.30f),
+  mkP(mk(0,M6), mk(7,M6), mk(5,M9), mk(0,M6), 0.75f, 0.40f),
+  mkP(mk(0,M6), mk(7,M6), mk(8,MAJ7), mk(5,M11), 0.70f, 0.35f),
+  mkP(mk(8,MAJ9), mk(0,M7), mk(10,SIX9), mk(8,MAJ9), 0.50f, 0.20f),
+  mkP(mk(10,SIX9), mk(8,MAJ9), mk(3,MAJ7), mk(7,M7), 0.50f, 0.20f),
+  mkP(mk(5,M9), mk(3,MAJ7), mk(0,SUS9), mk(5,M9), 0.55f, 0.30f),
+  mkP(mk(5,M9), mk(3,MAJ7), mk(0,SUS9), mk(3,ADD9), 0.45f, 0.30f),
+  mkP(mk(5,M9), mk(8,MAJ7), mk(5,M9), mk(0,M9), 0.70f, 0.25f),
+  mkP(mk(0,M6), mk(5,M7), mk(7,M7), mk(8,MAJ9), 0.70f, 0.30f),
+  mkP(mk(5,MAJ7), mk(4,M7), mk(2,M9), mk(5,MAJ7), 0.35f, 0.20f),
+  mkP(mk(2,M9), mk(5,MAJ7), mk(4,M7), mk(0,MAJ9), 0.35f, 0.20f),
+  mkP(mk(2,M9), mk(5,MAJ9), mk(0,MAJ9), mk(2,M9), 0.35f, 0.20f),
+  mkP(mk(2,M9), mk(7,SUS9), mk(5,MAJ7), mk(4,M7), 0.35f, 0.30f),
+  mkP(mk(3,ADD9), mk(1,ADD9), mk(5,M9), mk(8,SIX9), 0.50f, 0.20f),
+  mkP(mk(8,SIX9), mk(3,ADD9), mk(1,MAJ9), mk(0,M6), 0.50f, 0.25f),
+  mkP(mk(0,M11), mk(7,M11), mk(8,SIX9), mk(5,M11), 0.70f, 0.30f),
+  mkP(mk(0,M11), mk(7,M11), mk(3,SIX9), mk(10,ADD9), 0.60f, 0.25f),
+  mkP(mk(8,MAJ9), mk(10,SIX9), mk(5,M7), mk(8,MAJ9), 0.50f, 0.20f),
+  mkP(mk(5,M7), mk(8,MAJ9), mk(10,SIX9), mk(0,M9), 0.60f, 0.20f),
+  mkP(mk(5,M6), mk(0,M6), mk(3,ADD9), mk(8,MAJ7), 0.60f, 0.30f),
+  mkP(mk(8,MAJ7), mk(5,M6), mk(0,M6), mk(10,ADD9), 0.60f, 0.30f),
+  mkP(mk(0,M11), mk(8,SIX9), mk(5,M9), mk(7,D9), 0.55f, 0.35f),
+  mkP(mk(0,M11), mk(5,SUS9), mk(8,MAJ7S11), mk(0,M11), 0.55f, 0.45f),
+  mkP(mk(0,MAJ9), mk(4,M11), mk(5,SIX9), mk(7,SUS9), 0.25f, 0.30f),
+  mkP(mk(0,MAJ7), mk(5,SIX9), mk(0,MAJ7), mk(2,M7), 0.25f, 0.15f),
+  mkP(mk(2,M11), mk(4,M7), mk(7,D13), mk(4,M7), 0.50f, 0.40f),
+  mkP(mk(4,M7), mk(2,M11), mk(4,M7), mk(0,MAJ9), 0.50f, 0.30f),
+  mkP(mk(8,MAJ7S11), mk(5,M9), mk(3,MAJ9), mk(8,MAJ7S11), 0.50f, 0.40f),
+  mkP(mk(3,MAJ9), mk(8,MAJ7S11), mk(5,M9), mk(3,MAJ9), 0.50f, 0.30f),
+  mkP(mk(5,M11), mk(8,SIX9), mk(5,M11), mk(0,M9), 0.70f, 0.30f),
+  mkP(mk(0,MAJ9), mk(8,MAJ9), mk(0,MAJ9), mk(5,ADD9), 0.15f, 0.10f),
+  mkP(mk(5,ADD9), mk(0,MAJ9), mk(8,MAJ9), mk(10,D9), 0.20f, 0.25f),
+  mkP(mk(0,M9), mk(8,MAJ9), mk(5,M9), mk(7,M7), 0.70f, 0.25f),
+  mkP(mk(8,SIX9), mk(10,SUS9), mk(0,SUS9), mk(5,M7), 0.45f, 0.40f),
+  mkP(mk(8,MAJ9), mk(10,ADD9), mk(0,M11), mk(10,ADD9), 0.50f, 0.20f),
+  mkP(mk(8,MAJ9), mk(10,SIX9), mk(0,M11), mk(5,ADD9), 0.45f, 0.20f),
+  mkP(mk(5,MAJ9), mk(0,MAJ7), mk(4,M7), mk(2,M9), 0.35f, 0.20f),
+  mkP(mk(0,M11), mk(10,SIX9), mk(8,MAJ7), mk(5,M11), 0.60f, 0.25f),
+  mkP(mk(0,M11), mk(10,SIX9), mk(8,MAJ9), mk(10,SIX9), 0.50f, 0.20f),
+  mkP(mk(0,MAJ9), mk(2,M7), mk(4,M7), mk(2,M7), 0.50f, 0.25f),
+  mkP(mk(0,M11), mk(3,MAJ9), mk(0,M11), mk(8,SIX9), 0.60f, 0.25f),
+  mkP(mk(10,SIX9), mk(8,MAJ9), mk(5,M11), mk(8,MAJ9), 0.50f, 0.20f),
+  mkP(mk(0,M11), mk(3,ADD9), mk(8,SIX9), mk(5,M11), 0.60f, 0.25f),
+  mkP(mk(0,MAJ7), mk(10,MAJ9), mk(0,MAJ7), mk(5,SIX9), 0.15f, 0.10f),
+  mkP(mk(0,SIX9), mk(7,ADD9), mk(0,SIX9), mk(2,M11), 0.25f, 0.20f),
+  mkP(mk(0,SIX9), mk(7,ADD9), mk(2,M11), mk(4,M7), 0.35f, 0.25f),
+  mkP(mk(0,MAJ7), mk(9,M9), mk(2,M7), mk(7,SUS9), 0.35f, 0.30f),
+  mkP(mk(4,M7), mk(9,M9), mk(2,M7), mk(7,SUS9), 0.50f, 0.35f),
+  mkP(mk(0,M11), mk(5,M11), mk(7,D9), mk(0,M11), 0.65f, 0.40f),
+  mkP(mk(7,D9), mk(0,M11), mk(5,M11), mk(7,D9), 0.50f, 0.50f),
+  mkP(mk(0,M7), mk(3,ADD9), mk(5,M11), mk(10,SIX9), 0.60f, 0.25f),
+  mkP(mk(0,M9), mk(7,M7), mk(8,MAJ9), mk(5,SUS9), 0.55f, 0.30f),
+  mkP(mk(8,MAJ9), mk(5,M9), mk(0,M7), mk(7,M11), 0.70f, 0.25f),
+  mkP(mk(0,M6), mk(8,MAJ9), mk(10,SIX9), mk(0,M6), 0.60f, 0.30f),
+  mkP(mk(10,SIX9), mk(0,M6), mk(8,MAJ9), mk(5,ADD9), 0.45f, 0.20f),
+  mkP(mk(0,M9), mk(5,M9), mk(2,M7B5), mk(7,SUS9), 0.65f, 0.45f),
+  mkP(mk(2,M9), mk(4,M6), mk(2,M9), mk(7,SIX9), 0.50f, 0.30f),
+  mkP(mk(0,MAJ9), mk(5,MAJ9), mk(0,MAJ9), mk(4,M7), 0.25f, 0.15f),
+  mkP(mk(5,M6), mk(7,D9), mk(8,MAJ7), mk(0,M7), 0.55f, 0.35f),
+  mkP(mk(7,M9), mk(5,MAJ9), mk(0,ADD9), mk(7,M9), 0.35f, 0.20f),
+  mkP(mk(5,M9), mk(7,D7B9), mk(0,M9), mk(5,M9), 0.65f, 0.45f),
+  mkP(mk(0,M9), mk(5,M9), mk(7,D9), mk(0,M9), 0.65f, 0.35f),
+  mkP(mk(0,M9), mk(8,ADD9), mk(0,M9), mk(11,MAJ7S11), 0.55f, 0.30f),
+  mkP(mk(11,MAJ7S11), mk(0,M9), mk(8,ADD9), mk(5,SUS9), 0.45f, 0.40f),
+  mkP(mk(8,MAJ7), mk(0,SUS9), mk(8,MAJ7), mk(5,M11), 0.45f, 0.30f),
+  mkP(mk(8,MAJ9), mk(7,M7), mk(0,M11), mk(8,MAJ7), 0.60f, 0.25f),
+  mkP(mk(0,M11), mk(8,MAJ7), mk(7,M7), mk(0,SUS9), 0.55f, 0.30f),
+  mkP(mk(2,M9), mk(7,D9), mk(0,MAJ9), mk(9,M9), 0.35f, 0.35f),
+  mkP(mk(0,M9), mk(3,ADD9), mk(0,M9), mk(8,MAJ9), 0.60f, 0.20f),
+  mkP(mk(8,MAJ9), mk(3,ADD9), mk(10,SIX9), mk(8,MAJ7), 0.40f, 0.15f),
+  mkP(mk(0,M7), mk(5,M6), mk(0,M7), mk(8,MAJ9), 0.70f, 0.30f),
+  mkP(mk(0,MAJ7), mk(9,M11), mk(5,MAJ7), mk(7,SUS9), 0.25f, 0.30f),
+  mkP(mk(7,SUS9), mk(0,MAJ7), mk(2,M9), mk(7,SUS9), 0.25f, 0.35f),
+  mkP(mk(8,MAJ9), mk(5,SUS9), mk(0,M9), mk(10,SIX9), 0.45f, 0.30f),
+  mkP(mk(8,MAJ9), mk(10,SIX9), mk(5,M11), mk(10,SIX9), 0.50f, 0.20f),
+  mkP(mk(4,M11), mk(5,MAJ7), mk(2,M9), mk(7,SUS9), 0.35f, 0.35f),
+  mkP(mk(0,M9), mk(3,MAJ9), mk(8,MAJ9), mk(3,MAJ9), 0.50f, 0.20f),
+  mkP(mk(5,M9), mk(11,MAJ7S11), mk(0,M9), mk(7,M6), 0.65f, 0.40f),
+  mkP(mk(5,M7), mk(7,M7), mk(8,MAJ7), mk(5,M7), 0.70f, 0.25f),
+  mkP(mk(8,MAJ7), mk(5,M7), mk(7,M7), mk(0,M7), 0.70f, 0.25f),
+  mkP(mk(0,MAJ9), mk(7,ADD9), mk(9,M7), mk(0,MAJ9), 0.25f, 0.15f),
+  mkP(mk(9,M7), mk(0,MAJ9), mk(7,D9), mk(5,MAJ9), 0.25f, 0.30f),
+  mkP(mk(8,MAJ7), mk(0,M6), mk(10,SIX9), mk(8,MAJ7), 0.50f, 0.20f),
+  mkP(mk(10,SIX9), mk(8,MAJ7), mk(0,M6), mk(7,M6), 0.60f, 0.30f),
+  mkP(mk(0,M6), mk(10,SIX9), mk(8,MAJ7), mk(5,ADD9), 0.45f, 0.20f),
+  mkP(mk(5,ADD9), mk(0,M6), mk(10,SIX9), mk(5,ADD9), 0.45f, 0.20f),
+  mkP(mk(0,M6), mk(2,M6), mk(5,M11), mk(7,M7), 0.75f, 0.40f),
+  mkP(mk(0,M6), mk(6,MAJ7), mk(5,M11), mk(7,M7), 0.65f, 0.35f),
+  mkP(mk(0,MAJ9), mk(10,MAJ9), mk(5,SIX9), mk(0,MAJ9), 0.15f, 0.10f),
+  mkP(mk(5,SIX9), mk(0,MAJ9), mk(10,MAJ9), mk(5,SIX9), 0.15f, 0.15f),
+  mkP(mk(8,MAJ7), mk(5,M9), mk(8,MAJ7), mk(0,M6), 0.60f, 0.25f),
+  mkP(mk(2,M7), mk(4,M7), mk(2,M7), mk(0,MAJ9), 0.50f, 0.25f),
+  mkP(mk(0,M9), mk(8,MAJ9), mk(5,ADD9), mk(0,M9), 0.55f, 0.20f),
+  mkP(mk(0,ADD9), mk(7,M7), mk(5,SIX9), mk(0,ADD9), 0.25f, 0.15f),
+  mkP(mk(8,MAJ7), mk(5,M9), mk(8,MAJ7), mk(7,M7), 0.60f, 0.20f),
+  mkP(mk(11,M7), mk(2,ADD9), mk(4,M9), mk(11,M7), 0.65f, 0.30f),
+  mkP(mk(8,MAJ9), mk(10,D9), mk(1,MAJ9), mk(8,MAJ9), 0.25f, 0.30f),
+  mkP(mk(1,MAJ9), mk(8,MAJ9), mk(10,D9), mk(1,MAJ9), 0.25f, 0.30f),
+  mkP(mk(5,SUS9), mk(8,MAJ7), mk(10,SIX9), mk(5,SUS9), 0.35f, 0.35f),
+  mkP(mk(0,M9), mk(3,MAJ7), mk(7,M7), mk(0,M9), 0.70f, 0.25f),
+  mkP(mk(0,M9), mk(3,MAJ9), mk(7,M7), mk(10,SIX9), 0.60f, 0.20f),
+  mkP(mk(8,MAJ7), mk(7,M7), mk(8,MAJ9), mk(0,SUS9), 0.45f, 0.30f),
+  mkP(mk(0,MAJ9), mk(4,M7), mk(7,SIX9), mk(5,MAJ7), 0.25f, 0.15f),
+  mkP(mk(7,SIX9), mk(5,MAJ7), mk(2,M9), mk(7,D13), 0.25f, 0.30f),
+  mkP(mk(5,M9), mk(8,MAJ7), mk(5,M9), mk(0,M7), 0.70f, 0.25f)
 };
 
 // Настроение сцены: ностальгия / воздух в ритме / «слеза» топлайна / разрешение петли
 struct Mood { float nost = 0.3f, air = 0.4f, tear = 0.3f, res = 0.5f; };
+
+// ===== ЦЕПИ ПЕРЕХОДОВ (Markov): новые петли из переходов, выученных на банке =====
+// Температура ~ напряжение: спокойно -> предсказуемые ходы, напряжённо -> больше «обманутых ожиданий» (Huron)
+inline Ch markovNext(juce::Random& rng, const Ch& cur, float dk, float tn, int avoidR = -1, int avoidT = -1) {
+  const double T = 0.6 + 0.8 * (double) tn;
+  std::vector<Ch> cand; std::vector<double> w; double sum = 0;
+  for (const auto& p : BANK) {
+    const double dx = p.dk - dk, dy = p.tn - tn;
+    const double pw = std::exp(-(dx * dx + dy * dy) / (2.0 * 0.3 * 0.3)) + 0.01;
+    for (int k = 0; k < 4; ++k) {
+      const Ch& a = p.c[k]; if (a.r != cur.r) continue;
+      const Ch& b = p.c[(k + 1) % 4];
+      if (b.r == cur.r && b.t == cur.t) continue;
+      if (avoidR >= 0 && b.r == avoidR && b.t == avoidT) continue;
+      const double x = std::pow(pw * (a.t == cur.t ? 2.0 : 1.0), 1.0 / T);
+      cand.push_back(b); w.push_back(x); sum += x;
+    }
+  }
+  if (cand.empty()) return BANK[(size_t) rng.nextInt((int) BANK.size())].c[rng.nextInt(4)];
+  double r = rng.nextDouble() * sum;
+  for (size_t i = 0; i < cand.size(); ++i) { r -= w[i]; if (r <= 0.0) return cand[i]; }
+  return cand.back();
+}
+
+inline Prog markovProg(juce::Random& rng, float dk, float tn) {
+  double sum = 0; std::vector<double> w(BANK.size());
+  for (size_t i = 0; i < BANK.size(); ++i) {
+    const double dx = BANK[i].dk - dk, dy = BANK[i].tn - tn;
+    w[i] = std::exp(-(dx * dx + dy * dy) / (2.0 * 0.25 * 0.25)) + 0.005; sum += w[i];
+  }
+  double r = rng.nextDouble() * sum; size_t pi = BANK.size() - 1;
+  for (size_t i = 0; i < BANK.size(); ++i) { r -= w[i]; if (r <= 0.0) { pi = i; break; } }
+  Prog out{}; out.dk = dk; out.tn = tn; out.c[0] = BANK[pi].c[rng.nextInt(4)];
+  for (int i = 1; i < 4; ++i)
+    out.c[i] = markovNext(rng, out.c[i - 1], dk, tn, i >= 2 ? out.c[i - 2].r : -1, i >= 2 ? out.c[i - 2].t : -1);
+  return out;
+}
+
+// расстояние корня аккорда от тоники (функциональное напряжение), 0..~0.5
+inline double rootDist(int semis) {
+  static const double d[12] = {0.0, 0.45, 0.15, 0.2, 0.15, 0.1, 0.5, 0.05, 0.2, 0.15, 0.2, 0.35};
+  return d[((semis % 12) + 12) % 12];
+}
 
 struct Hit { double start, len; int chord; };
 struct PadPattern { int n; double s[4], l[4]; int cMap[4]; };
@@ -265,7 +485,7 @@ struct ChordGen {
       const double w = (i == 3) ? 0.3 + 1.7 * (double) mood.res : 1.0;
       const int bl = std::abs(a[0] - b[0]); if (bl > 5) q += w * (bl - 5) * 3;
       const int tl = std::abs(a.back() - b.back()); if (tl > 4) q += w * (tl - 4) * 2;
-      q += 3.0 * std::abs(tensOf(type[i]) - ideal[i] * (0.4 + 0.6 * (double) tenseV));
+      q += 3.0 * std::abs((0.75 * tensOf(type[i]) + 0.25 * rootDist(base.c[i].r)) - ideal[i] * (0.4 + 0.6 * (double) tenseV));
     }
     return q;
   }
@@ -276,14 +496,17 @@ struct ChordGen {
     for (int a = 0; a < 30; ++a) {
       ChordGen t;
       t.mood = m;
-      t.baseIdx = pickIdx(rng, dark, tense); t.base = BANK[(size_t) t.baseIdx];
+      const bool fresh = (a % 3 == 2);   // каждая третья попытка — новая петля из цепи переходов
+      if (fresh) { t.baseIdx = -1; t.base = markovProg(rng, dark, tense); }
+      else { t.baseIdx = pickIdx(rng, dark, tense); t.base = BANK[(size_t) t.baseIdx]; }
       // уникальность: иногда начинаем историю с другого аккорда (чем выше resolve, тем реже)
       if (rng.nextFloat() < 0.15f + 0.35f * (1.0f - m.res))
         std::rotate(t.base.c, t.base.c + 1 + rng.nextInt(3), t.base.c + 4);
       t.topCenter = 74.0f - 4.0f * dark;
       t.apply(rng, key, tense); t.revoice(open, rng, true); t.makeRhythm(rng, bpm);
       double q = t.quality();
-      if (t.baseIdx == avoid) q += 25;
+      if (fresh) q += 0.6;   // банк — ядро, цепь переходов — приправа
+      if (avoid >= 0 && t.baseIdx == avoid) q += 25;
       if (q < bq) { bq = q; best = t; }
     }
     *this = best;
@@ -296,8 +519,8 @@ struct ChordGen {
       const int changes = 1;
       for (int m = 0; m < changes; ++m) {
         const int k = 1 + rng.nextInt(3);
-        const Prog& q = BANK[(size_t) pickIdx(rng, base.dk, base.tn, 0.2f)];
-        const Ch nc = q.c[k]; const Ch old = np.c[k];
+        const Ch nc = rng.nextBool() ? markovNext(rng, np.c[k - 1], base.dk, base.tn) : BANK[(size_t) pickIdx(rng, base.dk, base.tn, 0.2f)].c[k];
+        const Ch old = np.c[k];
         if (nc.r == old.r && nc.t == old.t && nc.b == old.b) continue;
         np.c[k] = nc; changed = true;
       }
