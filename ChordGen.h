@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <functional>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <unordered_map>
 
 enum { MAJ7, MAJ9, M7, M9, M11, D9, D13, MAJ7S11, D7B9, SUS9, MMAJ7, SIX9, ADD9, M7B5 };
 inline const std::vector<int> IV[] = {
@@ -27,7 +30,7 @@ inline double tensOf(int t) {
   }
 }
 
-struct Ch { int r, t, b; };
+struct Ch { int r = 0, t = 0, b = -1; };
 struct Prog { Ch c[4]; float dk, tn; bool tw = false; }; // tw: прогрессия с заранее выверенным обманным финалом (только для End: Twist)
 inline Ch mk(int r, int t, int b = -1) { return Ch{r, t, b}; }
 inline Prog mkP(Ch a, Ch b, Ch c, Ch d, float dk, float tn) { return Prog{{a, b, c, d}, dk, tn}; }
@@ -178,6 +181,250 @@ inline const PadPattern PATTERNS_FAST[3] = {
   {3, {0.0, 8.0, 12.0, 0}, {8.0, 4.0, 4.0, 0}, {0, 2, 3, 0}}
 };
 
+
+// ======================= ВКУС: обучение на понравившихся прогрессиях =======================
+// Всё хранится в ОТНОСИТЕЛЬНЫХ ступенях (0 = тоника), поэтому тональность вкусу не мешает.
+inline Ch normCh(Ch c) { if (c.b == c.r) c.b = -1; return c; }
+inline int chKey(Ch c) { c = normCh(c); return c.r + 12 * c.t + 168 * (c.b < 0 ? 0 : c.b + 1); }
+// класс аккорда: 0 мажор/add, 1 минор, 2 доминанта, 3 sus / полууменьшенный
+inline int chCls(int t) {
+  switch (t) {
+    case MAJ7: case MAJ9: case MAJ7S11: case SIX9: case ADD9: return 0;
+    case M7: case M9: case M11: case MMAJ7: return 1;
+    case D9: case D13: case D7B9: return 2;
+    default: return 3;
+  }
+}
+inline uint64_t sigOf(const Ch* c) {
+  uint64_t h = 1469598103934665603ULL;
+  for (int i = 0; i < 4; ++i) { h ^= (uint64_t) (chKey(c[i]) + 1); h *= 1099511628211ULL; }
+  return h;
+}
+inline bool sameProg(const Prog& a, const Prog& b) {
+  for (int i = 0; i < 4; ++i) if (chKey(a.c[i]) != chKey(b.c[i])) return false;
+  return true;
+}
+inline int sampleW(juce::Random& rng, const std::vector<double>& w) {
+  double sum = 0; for (double x : w) sum += x;
+  if (sum <= 0.0) return rng.nextInt((int) w.size());
+  double r = rng.nextDouble() * sum; int last = 0;
+  for (size_t i = 0; i < w.size(); ++i) { if (w[i] > 0.0) last = (int) i; r -= w[i]; if (r <= 0.0 && w[i] > 0.0) return (int) i; }
+  return last;
+}
+
+struct Taste {
+  struct Entry { Ch c[4]; float dk = 0.5f, tn = 0.5f, w = 1.0f; bool tw = false; int src = 0; Feel f; uint64_t sig = 0; };
+  // src: 0 = сердечко, 1 = импорт MIDI (на будущее)
+  std::vector<Entry> entries;
+  std::vector<Prog> userProgs;   // понравившиеся прогрессии как записи пользовательского банка
+
+  // --- всё ниже пересчитывается в rebuild() ---
+  std::vector<Ch> vocab; std::unordered_map<int, int> vidx; int V = 0;
+  std::vector<float> bTr, tTr, bFirst, tFirst, sDk, sTn;   // переходы банка / вкуса, средние метки аккордов
+  float bdel[12][4][4], tdel[12][4][4], btp[14][14], ttp[14][14];
+  float typeW[14], posW[4][14], degW[12], typeMax = 0, posMax[4], degMax = 0;
+  double nEff = 0;
+
+  Taste() { rebuild(); }
+
+  float confidence() const { return (float) (1.0 - std::exp(-nEff / 4.0)); }
+  bool canCross() const { return !entries.empty(); }
+
+  int idOf(const Ch& c) const { auto it = vidx.find(chKey(c)); return it == vidx.end() ? -1 : it->second; }
+  const Prog& progAt(size_t j) const { return j < BANK.size() ? BANK[j] : userProgs[j - BANK.size()]; }
+
+  void rebuild() {
+    vocab.clear(); vidx.clear();
+    auto reg = [this](const Ch& c0) {
+      const Ch c = normCh(c0); const int k = chKey(c);
+      auto it = vidx.find(k); if (it != vidx.end()) return;
+      vidx[k] = (int) vocab.size(); vocab.push_back(c);
+    };
+    for (const auto& p : BANK) for (int i = 0; i < 4; ++i) reg(p.c[i]);
+    for (const auto& e : entries) for (int i = 0; i < 4; ++i) reg(e.c[i]);
+    V = (int) vocab.size();
+    const size_t VV = (size_t) V * (size_t) V;
+    bTr.assign(VV, 0.f); tTr.assign(VV, 0.f); bFirst.assign((size_t) V, 0.f); tFirst.assign((size_t) V, 0.f);
+    std::memset(bdel, 0, sizeof bdel); std::memset(tdel, 0, sizeof tdel);
+    std::memset(btp, 0, sizeof btp); std::memset(ttp, 0, sizeof ttp);
+    std::memset(typeW, 0, sizeof typeW); std::memset(posW, 0, sizeof posW); std::memset(degW, 0, sizeof degW);
+    std::vector<double> sumDk((size_t) V, 0.0), sumTn((size_t) V, 0.0), sumN((size_t) V, 0.0);
+
+    auto add = [&](const Ch* c, float dk, float tn, float w, bool taste) {
+      int id[4]; for (int i = 0; i < 4; ++i) id[i] = vidx[chKey(c[i])];
+      (taste ? tFirst : bFirst)[(size_t) id[0]] += w;
+      auto& tr = taste ? tTr : bTr;
+      float (&del)[12][4][4] = taste ? tdel : bdel;
+      float (&tp)[14][14] = taste ? ttp : btp;
+      for (int i = 0; i < 4; ++i) {
+        const int ia = id[i], ib = id[(i + 1) % 4];
+        const Ch& a = vocab[(size_t) ia]; const Ch& b = vocab[(size_t) ib];
+        tr[(size_t) ia * (size_t) V + (size_t) ib] += w;
+        del[(b.r - a.r + 12) % 12][chCls(a.t)][chCls(b.t)] += w;
+        tp[a.t][b.t] += w;
+        sumDk[(size_t) ia] += (double) dk * w; sumTn[(size_t) ia] += (double) tn * w; sumN[(size_t) ia] += w;
+      }
+    };
+    for (const auto& p : BANK) add(p.c, p.dk, p.tn, 1.0f, false);
+    nEff = 0; userProgs.clear();
+    for (const auto& e : entries) {
+      add(e.c, e.dk, e.tn, e.w, true);
+      nEff += e.w;
+      for (int i = 0; i < 4; ++i) {
+        const Ch c = normCh(e.c[i]);
+        typeW[c.t] += e.w; posW[i][c.t] += e.w; degW[c.r] += e.w;
+      }
+      Prog p; for (int i = 0; i < 4; ++i) p.c[i] = e.c[i];
+      p.dk = e.dk; p.tn = e.tn; p.tw = e.tw; userProgs.push_back(p);
+    }
+    typeMax = 0; degMax = 0; for (int i = 0; i < 4; ++i) posMax[i] = 0;
+    for (int t = 0; t < 14; ++t) { typeMax = std::max(typeMax, typeW[t]); for (int i = 0; i < 4; ++i) posMax[i] = std::max(posMax[i], posW[i][t]); }
+    for (int r = 0; r < 12; ++r) degMax = std::max(degMax, degW[r]);
+    sDk.assign((size_t) V, 0.5f); sTn.assign((size_t) V, 0.5f);
+    for (int s = 0; s < V; ++s) if (sumN[(size_t) s] > 0.0) { sDk[(size_t) s] = (float) (sumDk[(size_t) s] / sumN[(size_t) s]); sTn[(size_t) s] = (float) (sumTn[(size_t) s] / sumN[(size_t) s]); }
+  }
+
+  bool addEntry(const Ch* c, float dk, float tn, const Feel& f, float w, int src, bool tw) {
+    Entry e; for (int i = 0; i < 4; ++i) e.c[i] = normCh(c[i]);
+    e.dk = dk; e.tn = tn; e.f = f; e.w = w; e.src = src; e.tw = tw; e.sig = sigOf(e.c);
+    for (const auto& o : entries) if (o.sig == e.sig) return false;
+    entries.push_back(e); rebuild(); return true;
+  }
+  bool removeBySig(uint64_t sig, int src) {
+    for (size_t i = 0; i < entries.size(); ++i)
+      if (entries[i].sig == sig && entries[i].src == src) { entries.erase(entries.begin() + (long) i); rebuild(); return true; }
+    return false;
+  }
+  void clear() { entries.clear(); rebuild(); }
+
+  // ---------- оценки ----------
+  // переход a -> b в духе вкуса: точный переход + интервал корней и классов + пара типов (с запасом на новые сочетания)
+  float tasteTrans(const Ch& a, const Ch& b) const {
+    const int ia = idOf(a), ib = idOf(b);
+    const float ex = (ia >= 0 && ib >= 0) ? tTr[(size_t) ia * (size_t) V + (size_t) ib] : 0.f;
+    const float dl = tdel[(b.r - a.r + 12) % 12][chCls(a.t)][chCls(b.t)];
+    const float tp = ttp[a.t][b.t];
+    return 0.55f * (ex / (ex + 1.f)) + 0.30f * (dl / (dl + 2.f)) + 0.15f * (tp / (tp + 2.f));
+  }
+  // «проверенность» перехода по банку: насколько он родной для движка
+  float bankFlow(const Ch& a, const Ch& b) const {
+    const int ia = idOf(a), ib = idOf(b);
+    const float ex = (ia >= 0 && ib >= 0) ? bTr[(size_t) ia * (size_t) V + (size_t) ib] : 0.f;
+    const float dl = bdel[(b.r - a.r + 12) % 12][chCls(a.t)][chCls(b.t)];
+    const float tp = btp[a.t][b.t];
+    return 0.5f * (ex / (ex + 0.7f)) + 0.3f * (dl / (dl + 3.f)) + 0.2f * (tp / (tp + 4.f));
+  }
+  float chordAff(const Ch& c0, int pos) const {
+    const Ch c = normCh(c0);
+    const float ta = typeMax > 0 ? typeW[c.t] / typeMax : 0.f;
+    const float pa = posMax[pos] > 0 ? posW[pos][c.t] / posMax[pos] : 0.f;
+    const float da = degMax > 0 ? degW[c.r] / degMax : 0.f;
+    return 0.4f * ta + 0.3f * pa + 0.3f * da;
+  }
+  static float kern(float dx, float dy, float sg) { return std::exp(-(dx * dx + dy * dy) / (2.f * sg * sg)); }
+  // 0..1: насколько прогрессия (4 аккорда, относительные ступени) похожа на вкус
+  float score(const Ch* c, float dk, float tn, bool usePad) const {
+    if (entries.empty()) return 0.f;
+    float A = 0, T = 0;
+    for (int i = 0; i < 4; ++i) { A += chordAff(c[i], i); T += tasteTrans(normCh(c[i]), normCh(c[(i + 1) % 4])); }
+    A /= 4.f; T /= 4.f;
+    if (!usePad) return (0.30f * A + 0.50f * T) / 0.80f;
+    float P = 0; for (const auto& e : entries) P = std::max(P, kern(e.dk - dk, e.tn - tn, 0.22f));
+    return 0.30f * A + 0.50f * T + 0.20f * P;
+  }
+  float scoreProg(const Prog& p) const { return score(p.c, 0.f, 0.f, false); }
+  // штраф за дословный повтор уже понравившегося (хотим «похоже, но новое»)
+  float copyPenalty(const Ch* c) const {
+    int best = 0;
+    for (const auto& e : entries) {
+      int same = 0; for (int i = 0; i < 4; ++i) if (chKey(c[i]) == chKey(e.c[i])) ++same;
+      best = std::max(best, same);
+    }
+    return best >= 4 ? 14.f : (best == 3 ? 1.5f : 0.f);
+  }
+  // средняя «зона пэда» аккордов прогрессии (по меткам банка и вкуса)
+  void estimatePad(const Ch* c, float& ex, float& ey) const {
+    float sx = 0, sy = 0; int n = 0;
+    for (int i = 0; i < 4; ++i) { const int id = idOf(c[i]); if (id >= 0) { sx += sDk[(size_t) id]; sy += sTn[(size_t) id]; ++n; } }
+    if (n > 0) { ex = sx / (float) n; ey = sy / (float) n; }
+  }
+  // штраф за переходы, которых нет ни в банке, ни во вкусе
+  float flowPenalty(const Ch* c) const {
+    float s = 0;
+    for (int i = 0; i < 4; ++i) {
+      const Ch a = normCh(c[i]), b = normCh(c[(i + 1) % 4]);
+      s += std::max(0.f, 0.45f - std::max(bankFlow(a, b), tasteTrans(a, b))); // ниже «обычной» связности банка — штраф
+    }
+    return 10.0f * s;
+  }
+  float padCompat(int s, float dk, float tn) const {
+    return kern(sDk[(size_t) s] - dk, sTn[(size_t) s] - tn, 0.30f) + 0.05f;
+  }
+
+  // ---------- генерация ----------
+  // Новая прогрессия «в стиле вкуса»: цепь Маркова. Основа — переходы банка (логика движка),
+  // поверх них — переходы из понравившегося; зона пэда задаёт, какие аккорды уместны.
+  Prog genMarkov(juce::Random& rng, float dk, float tn, float ta) const {
+    std::vector<double> w((size_t) V);
+    int id[4];
+    for (int s = 0; s < V; ++s) w[(size_t) s] = ((double) bFirst[(size_t) s] + 6.0 * (double) ta * (double) tFirst[(size_t) s]) * (double) padCompat(s, dk, tn);
+    id[0] = sampleW(rng, w);
+    for (int i = 1; i < 4; ++i) {
+      const Ch& a = vocab[(size_t) id[i - 1]];
+      for (int s = 0; s < V; ++s) {
+        const Ch& b = vocab[(size_t) s];
+        const size_t k = (size_t) id[i - 1] * (size_t) V + (size_t) s;
+        double v = (double) bTr[k] + 8.0 * (double) ta * (double) tTr[k];
+        v += 0.015 * ((double) bankFlow(a, b) + (double) ta * (double) tasteTrans(a, b));
+        v *= (double) padCompat(s, dk, tn);
+        if (b.r == a.r && b.t == a.t) v *= 0.05;
+        for (int j = 0; j < i; ++j) if (vocab[(size_t) id[j]].r == b.r && vocab[(size_t) id[j]].t == b.t) v *= 0.25;
+        if (i == 3) v *= 0.2 + 0.8 * (double) bankFlow(b, vocab[(size_t) id[0]]);
+        w[(size_t) s] = v;
+      }
+      id[i] = sampleW(rng, w);
+    }
+    Prog p; for (int i = 0; i < 4; ++i) p.c[i] = vocab[(size_t) id[i]];
+    p.dk = dk; p.tn = tn; p.tw = false;
+    return p;
+  }
+
+  // Скрещивание: начало от одной понравившейся, конец от другой прогрессии (из вкуса или из банка рядом с пэдом)
+  Prog genCross(juce::Random& rng, float dk, float tn) const {
+    std::vector<double> wa(entries.size());
+    for (size_t i = 0; i < entries.size(); ++i) wa[i] = (double) entries[i].w * (0.25 + (double) kern(entries[i].dk - dk, entries[i].tn - tn, 0.30f));
+    const Entry& A = entries[(size_t) sampleW(rng, wa)];
+    const size_t nb = BANK.size() + userProgs.size();
+    std::vector<double> wb(nb);
+    for (size_t j = 0; j < nb; ++j) {
+      const Prog& p = progAt(j);
+      wb[j] = p.tw ? 0.0 : ((double) kern(p.dk - dk, p.tn - tn, 0.25f) + 0.01) * (0.3 + 1.7 * (double) scoreProg(p));
+    }
+    const Prog& B = progAt((size_t) sampleW(rng, wb));
+    const int cut = 1 + rng.nextInt(3);
+    const bool aFirst = rng.nextFloat() < 0.5f;
+    Prog p;
+    for (int i = 0; i < 4; ++i) p.c[i] = (i < cut) == aFirst ? A.c[i] : B.c[i];
+    p.dk = dk; p.tn = tn; p.tw = false;
+    return p;
+  }
+
+  // Подбор аккорда «между соседями» (для Evolve): должен хорошо вести от prev и к next
+  Ch sampleBridge(juce::Random& rng, const Ch& prev, const Ch& next, float dk, float tn, float ta, int avoidR1, int avoidR2) const {
+    std::vector<double> w((size_t) V);
+    for (int s = 0; s < V; ++s) {
+      const Ch& v = vocab[(size_t) s];
+      double x = ((double) bankFlow(prev, v) + 0.05 + (double) ta * (double) tasteTrans(prev, v))
+               * ((double) bankFlow(v, next) + 0.05 + (double) ta * (double) tasteTrans(v, next))
+               * (double) padCompat(s, dk, tn);
+      if ((v.r == prev.r && v.t == prev.t) || (v.r == next.r && v.t == next.t)) x *= 0.05;
+      if (v.r == avoidR1 || v.r == avoidR2) x = 0.0;
+      w[(size_t) s] = x;
+    }
+    return vocab[(size_t) sampleW(rng, w)];
+  }
+};
+
 struct ChordGen {
   int root[4] = {0,0,0,0}, type[4] = {MAJ9,MAJ9,MAJ9,MAJ9}, bass[4] = {0,0,0,0};
   std::vector<int> voiced[4];
@@ -189,14 +436,47 @@ struct ChordGen {
   juce::String names;
   Feel feel;
   bool tearAt[4] = {false, false, false, false};
+  int keyUsed = 0;                       // тональность, в которой сейчас лежат root[] (для перевода в ступени)
+  float padDk = 0.5f, padTn = 0.5f;      // точка пэда, при которой родилась прогрессия
 
-  static int pickIdx(juce::Random& rng, float dk, float tn, float sigma = 0.25f, bool twist = false) {
-    const size_t n = BANK.size();
+  // аккорд i в относительных ступенях (0 = тоника)
+  Ch relCh(int i) const {
+    Ch c; c.r = ((root[i] - keyUsed) % 12 + 12) % 12; c.t = type[i];
+    c.b = (bass[i] == root[i]) ? -1 : ((bass[i] - keyUsed) % 12 + 12) % 12;
+    return c;
+  }
+  uint64_t signature() const { Ch c[4]; for (int i = 0; i < 4; ++i) c[i] = relCh(i); return sigOf(c); }
+
+  // поправка к оценке кандидата (меньше = лучше): бонус за вкус, штраф за дословный повтор,
+  // а для новых (не из банка) — ещё и соответствие пэду, связность и отсутствие дублей
+  double tasteDelta(const Taste* tz, float ta, float dk, float tn, bool synth) const {
+    Ch c[4]; for (int i = 0; i < 4; ++i) c[i] = relCh(i);
+    double d = -10.0 * (double) ta * (double) tz->score(c, dk, tn, true);
+    d += (double) tz->copyPenalty(c);
+    if (synth) {
+      float ex = dk, ey = tn; tz->estimatePad(c, ex, ey);
+      d += 3.0 * (1.0 - std::exp(-(double) ((ex - dk) * (ex - dk) + (ey - tn) * (ey - tn)) / (2.0 * 0.3 * 0.3)));
+      d += (double) tz->flowPenalty(c);
+      for (int i = 0; i < 4; ++i) if (c[i].r == c[(i + 1) % 4].r && c[i].t == c[(i + 1) % 4].t) d += 6.0;
+    }
+    return d;
+  }
+
+  static const Prog& progAt(int idx, const Taste* tz) {
+    return (size_t) idx < BANK.size() ? BANK[(size_t) idx] : tz->userProgs[(size_t) idx - BANK.size()];
+  }
+
+  // ta > 0: к пулу добавляются понравившиеся прогрессии, а веса сдвигаются в сторону вкуса
+  static int pickIdx(juce::Random& rng, float dk, float tn, float sigma = 0.25f, bool twist = false, const Taste* tz = nullptr, float ta = 0.0f) {
+    const bool useT = tz != nullptr && ta > 0.0f && !tz->entries.empty();
+    const size_t nb = BANK.size(), n = nb + (useT ? tz->userProgs.size() : 0);
     std::vector<double> w(n); double sum = 0;
     for (size_t i = 0; i < n; ++i) {
-      const double dx = BANK[i].dk - dk, dy = BANK[i].tn - tn;
+      const Prog& p = i < nb ? BANK[i] : tz->userProgs[i - nb];
+      const double dx = p.dk - dk, dy = p.tn - tn;
       w[i] = std::exp(-(dx * dx + dy * dy) / (2.0 * sigma * sigma)) + 0.005;
-      if (BANK[i].tw) w[i] = twist ? w[i] * 4.0 : 0.0; // twist-прогрессии не влияют на остальные режимы
+      if (useT) { w[i] *= 1.0 + 2.5 * (double) ta * (double) tz->scoreProg(p); if (i >= nb) w[i] *= 0.6; }
+      if (p.tw) w[i] = twist ? w[i] * 4.0 : 0.0; // twist-прогрессии не влияют на остальные режимы
       sum += w[i];
     }
     double r = rng.nextDouble() * sum;
@@ -263,6 +543,7 @@ struct ChordGen {
   void apply(juce::Random& rng, int key, float tense) {
     tenseV = tense;
     const int effectiveKey = (key == 12) ? rng.nextInt(12) : key;
+    keyUsed = effectiveKey;
 
     int r[4], t[4], b[4];
     for (int i = 0; i < 4; ++i) {
@@ -365,31 +646,53 @@ struct ChordGen {
     return q;
   }
 
-  void generate(juce::Random& rng, int key, float dark, float tense, bool open, double bpm = 120.0, bool differ = false) {
-    const int avoid = differ ? baseIdx : -1;
+  void generate(juce::Random& rng, int key, float dark, float tense, bool open, double bpm = 120.0, bool differ = false,
+                const Taste* tz = nullptr, float tasteAmt = 0.0f) {
+    const bool twist = feel.res == RES_TWIST;
+    const float ta = (tz != nullptr && !tz->entries.empty()) ? tasteAmt * tz->confidence() : 0.0f;
+    const bool useT = ta > 0.03f;
+    const Prog prev = base;
     ChordGen best; double bq = 1e18;
-    for (int a = 0; a < 30; ++a) {
+    const int attempts = useT ? 40 : 30;
+    for (int a = 0; a < attempts; ++a) {
       ChordGen t; t.feel = feel;
-      t.baseIdx = pickIdx(rng, dark, tense, 0.25f, feel.res == RES_TWIST); t.base = BANK[(size_t) t.baseIdx];
+      const float srcR = rng.nextFloat(), srcR2 = rng.nextFloat();
+      int src = 0;
+      if (useT && srcR < 0.10f + 0.65f * ta) {
+        // новая прогрессия «в моём вкусе»: цепь Маркова или скрещивание понравившихся
+        if (srcR2 < 0.55f || !tz->canCross()) { t.base = tz->genMarkov(rng, dark, tense, ta); t.baseIdx = -2; src = 1; }
+        else { t.base = tz->genCross(rng, dark, tense); t.baseIdx = -3; src = 2; }
+      } else {
+        t.baseIdx = pickIdx(rng, dark, tense, 0.25f, twist, tz, useT ? ta : 0.0f);
+        t.base = progAt(t.baseIdx, tz);
+      }
+      t.padDk = dark; t.padTn = tense;
       t.topCenter = 74.0f - 4.0f * dark;
       t.apply(rng, key, tense); t.revoice(open, rng, true); t.makeRhythm(rng, bpm);
       double q = t.quality();
-      if (t.baseIdx == avoid) q += 25;
+      if (differ && sameProg(t.base, prev)) q += 25;
+      if (useT) q += t.tasteDelta(tz, ta, dark, tense, src != 0);
       if (q < bq) { bq = q; best = t; }
     }
     *this = best;
   }
 
-  void evolve(juce::Random& rng, int key, float tense, bool open, double bpm = 120.0) {
+  void evolve(juce::Random& rng, int key, float tense, bool open, double bpm = 120.0, const Taste* tz = nullptr, float tasteAmt = 0.0f) {
+    const bool twist = feel.res == RES_TWIST;
+    const float ta = (tz != nullptr && !tz->entries.empty()) ? tasteAmt * tz->confidence() : 0.0f;
+    const bool useT = ta > 0.03f;
     ChordGen best; double bq = 1e18; bool found = false;
     for (int a = 0; a < 12; ++a) {
       Prog np = base; bool changed = false;
       const int changes = 1;
       for (int m = 0; m < changes; ++m) {
         int k = 1 + rng.nextInt(3);
-        if (base.tw || feel.res == RES_TWIST) k = 1; // 3-й и 4-й аккорды Twist-финала не трогаем
-        const Prog& q = BANK[(size_t) pickIdx(rng, base.dk, base.tn, 0.2f, feel.res == RES_TWIST)];
-        const Ch nc = q.c[k]; const Ch old = np.c[k];
+        if (base.tw || twist) k = 1; // 3-й и 4-й аккорды Twist-финала не трогаем
+        Ch nc;
+        if (useT && rng.nextFloat() < 0.30f + 0.50f * ta)
+          nc = tz->sampleBridge(rng, np.c[k - 1], np.c[(k + 1) % 4], base.dk, base.tn, ta, base.tw ? np.c[2].r : -1, base.tw ? np.c[3].r : -1);
+        else nc = progAt(pickIdx(rng, base.dk, base.tn, 0.2f, twist, tz, useT ? ta : 0.0f), tz).c[k];
+        const Ch old = np.c[k];
         if (nc.r == old.r && nc.t == old.t && nc.b == old.b) continue;
         if (base.tw && (nc.r == np.c[2].r || nc.r == np.c[3].r)) continue;
         np.c[k] = nc; changed = true;
@@ -397,13 +700,15 @@ struct ChordGen {
       if (!changed) continue;
       ChordGen t = *this; t.base = np;
       t.apply(rng, key, tense); t.revoice(open, rng, true); t.makeRhythm(rng, bpm);
-      const double q = t.quality();
+      double q = t.quality();
+      if (useT) q += t.tasteDelta(tz, ta, padDk, padTn, false);
       if (q < bq) { bq = q; best = t; found = true; }
     }
     if (found) *this = best;
   }
 
   void transpose(int d, bool open, juce::Random& rng) {
+    keyUsed = ((keyUsed + d) % 12 + 12) % 12;
     for (int i = 0; i < 4; ++i) {
       root[i] = (root[i] + d) % 12; bass[i] = (bass[i] + d) % 12;
       topLine[i] += d; if (topLine[i] > 77) topLine[i] -= 12;
