@@ -1,53 +1,22 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <climits>
 #include "ChordGen.h"
-
-struct PadSound : juce::SynthesiserSound {
-  bool appliesToNote(int) override { return true; }
-  bool appliesToChannel(int) override { return true; }
-};
-
-struct PadVoice : juce::SynthesiserVoice {
-  bool canPlaySound(juce::SynthesiserSound* s) override { return dynamic_cast<PadSound*>(s) != nullptr; }
-  void startNote(int note, float vel, juce::SynthesiserSound*, int) override {
-    inc = juce::MathConstants<double>::twoPi * juce::MidiMessage::getMidiNoteInHertz(note) / getSampleRate();
-    phase = 0; level = vel * 0.1f;
-    env.setSampleRate(getSampleRate());
-    env.setParameters(juce::ADSR::Parameters{0.25f, 0.7f, 0.85f, 1.4f}); // Еще более мягкая, обволакивающая атака и релиз
-    env.noteOn();
-  }
-  void stopNote(float, bool allow) override { if (allow) env.noteOff(); else { env.reset(); clearCurrentNote(); } }
-  void pitchWheelMoved(int) override {}
-  void controllerMoved(int, int) override {}
-  void renderNextBlock(juce::AudioBuffer<float>& b, int start, int num) override {
-    if (!env.isActive()) return;
-    while (--num >= 0) {
-      float e = env.getNextSample();
-      float s = (float)(std::sin(phase) + 0.35 * std::sin(2 * phase) + 0.15 * std::sin(3 * phase)) * level * e;
-      for (int c = 0; c < b.getNumChannels(); ++c) b.addSample(c, start, s);
-      phase += inc; ++start;
-      if (!env.isActive()) { clearCurrentNote(); break; }
-    }
-  }
-  juce::ADSR env; double phase = 0, inc = 0; float level = 0;
-};
+#include "LogoData.h"
 
 class NSAProcessor : public juce::AudioProcessor {
 public:
   NSAProcessor() : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)) {
-    synth.addSound(new PadSound());
-    for (int i = 0; i < 16; ++i) synth.addVoice(new PadVoice());
     loadTaste();
     generate();
   }
   const juce::String getName() const override { return "NSA Chords"; }
-  void prepareToPlay(double sr, int) override { sampleRate = sr; synth.setCurrentPlaybackSampleRate(sr); active.reserve(64); pending.reserve(64); }
+  void prepareToPlay(double sr, int) override { sampleRate = sr; active.reserve(64); pending.reserve(64); }
   void releaseResources() override {}
   bool isBusesLayoutSupported(const BusesLayout& l) const override { return l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo(); }
   bool acceptsMidi() const override { return true; }
   bool producesMidi() const override { return true; }
   bool isMidiEffect() const override { return false; }
-  double getTailLengthSeconds() const override { return 1.5; }
+  double getTailLengthSeconds() const override { return 0.0; }
   int getNumPrograms() override { return 1; }
   int getCurrentProgram() override { return 0; }
   void setCurrentProgram(int) override {}
@@ -101,9 +70,7 @@ public:
         if (auto b = pos->getBpm()) bpm = *b;
       }
     if (bpm < 20.0) bpm = 120.0;
-    bool run = false;
-    if (hostPlaying && havePpq) run = true;
-    else if (preview.load()) { ppq = internalPpq; bpm = getCurrentBpm(); internalPpq += (double) n / sampleRate * (bpm / 60.0); run = true; }
+    const bool run = hostPlaying && havePpq;
 
     if (version.load() != snapVersion) {
       juce::SpinLock::ScopedTryLockType tl(lock);
@@ -188,7 +155,6 @@ public:
       for (auto& a : active) ev.addEvent(juce::MidiMessage::noteOff(1, a.note), 0);
       active.clear(); pending.clear(); wasRunning = false;
     }
-    synth.renderNextBlock(buffer, ev, 0, n);
     midi.swapWith(ev);
   }
 
@@ -238,7 +204,6 @@ public:
     }
   }
   void revoice() { juce::SpinLock::ScopedLockType l(lock); state.revoice(open != 0, uiRng); ++version; }
-  void setPreview(bool on) { if (on) internalPpq = 0; preview = on; }
   juce::String getNames() { juce::SpinLock::ScopedLockType l(lock); return state.names; }
 
   // ---------- ВКУС: сердечко, хранение в общем файле ----------
@@ -371,7 +336,7 @@ public:
 
   std::atomic<int> key{0}, open{0}, octaveShift{0};
   std::atomic<float> dark{0.6f}, tense{0.4f};
-  std::atomic<bool> preview{false}, noBass{false}, strum{false};
+  std::atomic<bool> noBass{false}, strum{true};
   std::atomic<float> nost{0.0f}, air{0.0f}, tear{0.0f}, human{0.5f};
   std::atomic<int> res{RES_HOME}, scene{0};
   std::atomic<bool> liked{false};
@@ -382,7 +347,6 @@ private:
   struct Act { int note; double end; };
   struct Pend { double t; int note; juce::uint8 vel; };
   std::vector<Pend> pending;
-  juce::Synthesiser synth;
   juce::SpinLock lock;
   ChordGen state, snap;
   Taste taste; // под lock
@@ -390,7 +354,7 @@ private:
   int snapVersion = -1, seed = 1, lastKey = 0;
   juce::Random uiRng, audioRng;
   std::vector<Act> active;
-  double sampleRate = 44100.0, internalPpq = 0.0, expectedPpq = 0.0;
+  double sampleRate = 44100.0, expectedPpq = 0.0;
   bool wasRunning = false;
   int fileCounter = 0;
 };
@@ -408,7 +372,7 @@ struct NSALook : juce::LookAndFeel_V4 {
     setColour(juce::PopupMenu::highlightedBackgroundColourId, ui::gold);
     setColour(juce::PopupMenu::highlightedTextColourId, ui::ink);
   }
-  juce::Font getComboBoxFont(juce::ComboBox&) override { return juce::Font(juce::FontOptions(13.0f)); }
+  juce::Font getComboBoxFont(juce::ComboBox&) override { return juce::Font(juce::FontOptions(12.0f)); }
   juce::Font getPopupMenuFont() override { return juce::Font(juce::FontOptions(13.0f)); }
   juce::Font getTextButtonFont(juce::TextButton&, int) override { return juce::Font(juce::FontOptions(13.0f)); }
 
@@ -416,12 +380,12 @@ struct NSALook : juce::LookAndFeel_V4 {
     auto r = juce::Rectangle<float>(0.0f, 0.0f, (float) w, (float) h).reduced(0.5f);
     g.setColour(box.isMouseOver() ? ui::chipHi : ui::chip); g.fillRoundedRectangle(r, 10.0f);
     g.setColour(ui::line); g.drawRoundedRectangle(r, 10.0f, 1.0f);
-    const float cx = (float) w - 13.0f, cy = (float) h * 0.5f;
+    const float cx = (float) w - 10.0f, cy = (float) h * 0.5f;
     juce::Path p; p.startNewSubPath(cx - 3.5f, cy - 1.5f); p.lineTo(cx, cy + 2.0f); p.lineTo(cx + 3.5f, cy - 1.5f);
     g.setColour(ui::gold); g.strokePath(p, juce::PathStrokeType(1.3f));
   }
   void positionComboBoxText(juce::ComboBox& box, juce::Label& label) override {
-    label.setBounds(6, 1, box.getWidth() - 24, box.getHeight() - 2);
+    label.setBounds(2, 1, box.getWidth() - 18, box.getHeight() - 2);
     label.setFont(getComboBoxFont(box)); label.setJustificationType(juce::Justification::centred);
   }
   void drawButtonBackground(juce::Graphics& g, juce::Button& b, const juce::Colour& c, bool hl, bool down) override {
@@ -545,9 +509,6 @@ struct PadBox : juce::Component {
     g.drawText("Candlelight", 10, h - 22, 100, 16, juce::Justification::left);
     g.drawText("4 AM", w - 110, h - 22, 100, 16, juce::Justification::right);
     const auto a = area();
-    g.setColour(ui::goldHi);
-    for (const auto& sc : SCENES)
-      g.drawEllipse(a.getX() + sc.dk * a.getWidth() - 2.5f, a.getBottom() - sc.tn * a.getHeight() - 2.5f, 5.0f, 5.0f, 1.0f);
     const float x = a.getX() + proc.dark.load() * a.getWidth();
     const float y = a.getBottom() - proc.tense.load() * a.getHeight();
     g.setColour(ui::fg); g.fillEllipse(x - 6.5f, y - 6.5f, 13.0f, 13.0f);
@@ -569,7 +530,7 @@ class NSAEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
   explicit NSAEditor(NSAProcessor& p) : AudioProcessorEditor(&p), proc(p), pad(p), drag(p) {
     setLookAndFeel(&look);
-    setSize(400, 576);
+    setSize(400, 538);
     keyBox.addItemList(juce::StringArray{"C","C#","D","D#","E","F","F#","G","G#","A","A#","B","Free key"}, 1);
     voiBox.addItemList(juce::StringArray{"Close","Open"}, 1);
     octBox.addItemList(juce::StringArray{"Oct: -1","Oct: 0","Oct: +1"}, 1);
@@ -582,10 +543,7 @@ public:
     voiBox.onChange = [this] { proc.open = voiBox.getSelectedItemIndex(); proc.revoice(); };
     octBox.onChange = [this] { proc.octaveShift = octBox.getSelectedItemIndex() - 1; };
 
-    sceneBox.addItem("Scene: Free", 1);
-    for (int i = 0; i < 8; ++i) sceneBox.addItem(SCENES[i].name, i + 2);
-    sceneBox.setSelectedItemIndex(proc.scene.load(), juce::dontSendNotification);
-    sceneBox.onChange = [this] { proc.setScene(sceneBox.getSelectedItemIndex()); syncFromProc(); };
+    logoImg = juce::ImageFileFormat::loadFrom(logo::png, (size_t) logo::pngSize);
     resBox.addItemList(juce::StringArray{"End: Home","End: Hang","End: Twist"}, 1);
     resBox.setSelectedItemIndex(proc.res.load(), juce::dontSendNotification);
     resBox.onChange = [this] { proc.res = resBox.getSelectedItemIndex(); proc.padChanged(); };
@@ -594,7 +552,7 @@ public:
     initCtl(cTear, "Tear", proc.tear.load(), [this](float v) { proc.tear = v; proc.padChanged(); });
     initCtl(cHuman, "Human", proc.human.load(), [this](float v) { proc.human = v; });
     initCtl(cTaste, "Taste", proc.tasteAmt.load(), [this](float v) { proc.tasteAmt = v; }); // влияет на следующие Generate/Evolve
-    tasteInfo.setFont(13.0f); tasteInfo.setJustificationType(juce::Justification::centredRight);
+    tasteInfo.setFont(13.0f); tasteInfo.setJustificationType(juce::Justification::centredLeft);
     tasteInfo.setColour(juce::Label::textColourId, ui::mu);
     heart.onClick = [this] { proc.toggleLike(); syncHeart(); if (proc.liked.load()) heart.pop(); };
     heart.onRight = [this] { showTasteMenu(); };
@@ -605,19 +563,6 @@ public:
     genBtn.setColour(juce::TextButton::textColourOffId, ui::ink);
     contBtn.setColour(juce::TextButton::buttonColourId, ui::chip);
     contBtn.setColour(juce::TextButton::textColourOffId, ui::fg);
-
-    preBtn.setClickingTogglesState(true);
-    preBtn.setColour(juce::TextButton::buttonColourId, ui::chip);
-    preBtn.setColour(juce::TextButton::buttonOnColourId, ui::gold);
-    preBtn.setColour(juce::TextButton::textColourOffId, ui::fg);
-    preBtn.setColour(juce::TextButton::textColourOnId, ui::ink);
-    preBtn.setToggleState(proc.preview.load(), juce::dontSendNotification);
-    preBtn.setButtonText(proc.preview.load() ? "Stop" : "Preview");
-    preBtn.onClick = [this] {
-      bool on = preBtn.getToggleState();
-      proc.setPreview(on);
-      preBtn.setButtonText(on ? "Stop" : "Preview");
-    };
 
     nobassBtn.setButtonText("No bass");
     nobassBtn.setToggleState(proc.noBass.load(), juce::dontSendNotification);
@@ -631,7 +576,7 @@ public:
     label.setMinimumHorizontalScale(0.7f);
     label.setColour(juce::Label::textColourId, ui::fg);
 
-    for (juce::Component* c : std::initializer_list<juce::Component*>{&keyBox, &voiBox, &octBox, &sceneBox, &resBox, &pad, &genBtn, &contBtn, &preBtn, &nobassBtn, &strumBtn, &label, &drag, &heart, &tasteInfo})
+    for (juce::Component* c : std::initializer_list<juce::Component*>{&keyBox, &voiBox, &resBox, &octBox, &pad, &genBtn, &contBtn, &nobassBtn, &strumBtn, &label, &drag, &heart, &tasteInfo})
       addAndMakeVisible(c);
     startTimerHz(4); timerCallback();
   }
@@ -639,19 +584,20 @@ public:
 
   void paint(juce::Graphics& g) override {
     g.fillAll(ui::bg);
-    g.setColour(ui::fg); g.setFont(17.0f);
-    g.drawText("NSA Chords", 21, 14, 260, 24, juce::Justification::left);
+    const float lh = 30.0f, lw = lh * (float) logoImg.getWidth() / (float) juce::jmax(1, logoImg.getHeight());
+    if (logoImg.isValid())
+      g.drawImage(logoImg, juce::Rectangle<float>(21.0f, 14.0f, lw, lh), juce::RectanglePlacement::stretchToFit);
+    g.setColour(juce::Colour(0xffe6e6e6));
+    g.setFont(juce::Font(juce::FontOptions(11.0f, juce::Font::bold)).withExtraKerningFactor(0.3f));
+    g.drawText("NIGHT SESSION AUDIO", juce::Rectangle<int>(21 + (int) lw + 8, 14, 240, 30), juce::Justification::centredLeft);
   }
   void resized() override {
-    auto r = getLocalBounds().reduced(18); r.removeFromTop(30);
-    auto row = r.removeFromTop(30); const int w3 = row.getWidth() / 3;
-    keyBox.setBounds(row.removeFromLeft(w3).reduced(3, 0));
-    voiBox.setBounds(row.removeFromLeft(w3).reduced(3, 0));
-    octBox.setBounds(row.reduced(3, 0));
-
-    r.removeFromTop(8); row = r.removeFromTop(30);
-    resBox.setBounds(row.removeFromRight(row.getWidth() * 2 / 5).reduced(3, 0));
-    sceneBox.setBounds(row.reduced(3, 0));
+    auto r = getLocalBounds().reduced(18); r.removeFromTop(34);
+    auto row = r.removeFromTop(28); const int w4 = row.getWidth() / 4;
+    keyBox.setBounds(row.removeFromLeft(w4).reduced(2, 0));
+    voiBox.setBounds(row.removeFromLeft(w4).reduced(2, 0));
+    resBox.setBounds(row.removeFromLeft(w4).reduced(2, 0));
+    octBox.setBounds(row.reduced(2, 0));
 
     r.removeFromTop(8); pad.setBounds(r.removeFromTop(150).reduced(3, 0));
 
@@ -661,15 +607,16 @@ public:
 
     r.removeFromTop(8); row = r.removeFromTop(34); placeCtl(cNost, row.removeFromLeft(row.getWidth() / 2)); placeCtl(cAir, row);
     r.removeFromTop(6); row = r.removeFromTop(34); placeCtl(cTear, row.removeFromLeft(row.getWidth() / 2)); placeCtl(cHuman, row);
-    r.removeFromTop(6); row = r.removeFromTop(34); placeCtl(cTaste, row.removeFromLeft(row.getWidth() / 2));
-    { auto ti = row.reduced(4, 0); tasteInfo.setBounds(ti.removeFromTop(16)); }
+    r.removeFromTop(6); row = r.removeFromTop(34); placeCtl(cTaste, row);
 
-    r.removeFromTop(8); row = r.removeFromTop(34); const int bw = row.getWidth() / 3;
+    r.removeFromTop(8); row = r.removeFromTop(34); const int bw = row.getWidth() / 2;
     genBtn.setBounds(row.removeFromLeft(bw).reduced(3, 0));
-    contBtn.setBounds(row.removeFromLeft(bw).reduced(3, 0));
-    preBtn.setBounds(row.reduced(3, 0));
+    contBtn.setBounds(row.reduced(3, 0));
 
-    r.removeFromTop(8); row = r.removeFromTop(26); heart.setBounds(row.removeFromRight(26)); label.setBounds(row);
+    r.removeFromTop(8); row = r.removeFromTop(26);
+    auto hb = row.removeFromRight(70);
+    heart.setBounds(hb.removeFromLeft(26)); tasteInfo.setBounds(hb.withTrimmedLeft(2));
+    label.setBounds(row);
     r.removeFromTop(8); drag.setBounds(r.reduced(3, 0));
   }
   struct Ctl { juce::Label name, val; juce::Slider s; };
@@ -702,7 +649,7 @@ public:
   }
   void syncHeart() {
     heart.setOn(proc.liked.load());
-    tasteInfo.setText("Liked: " + juce::String(proc.tasteCount.load()), juce::dontSendNotification);
+    tasteInfo.setText("(" + juce::String(proc.tasteCount.load()) + ")", juce::dontSendNotification);
   }
   void showTasteMenu() {
     const int n = proc.tasteCount.load();
@@ -717,11 +664,11 @@ public:
 private:
   NSALook look;
   NSAProcessor& proc;
-  juce::ComboBox keyBox, voiBox, octBox, sceneBox, resBox;
+  juce::ComboBox keyBox, voiBox, octBox, resBox;
   Ctl cNost, cAir, cTear, cHuman, cTaste;
-  juce::TextButton genBtn, contBtn, preBtn;
+  juce::TextButton genBtn, contBtn;
   juce::ToggleButton nobassBtn, strumBtn;
-  juce::Label label, tasteInfo; PadBox pad; DragBox drag; HeartBtn heart;
+  juce::Label label, tasteInfo; PadBox pad; DragBox drag; HeartBtn heart; juce::Image logoImg;
 };
 
 juce::AudioProcessorEditor* NSAProcessor::createEditor() { return new NSAEditor(*this); }
